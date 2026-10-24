@@ -1,6 +1,6 @@
 (()=>{ 'use strict';
 /*
- * 潮汐指标-MuseAi（Wed-DP 外部插件）v1 校准版 CT001.3
+ * 潮汐指标-MuseAi（Wed-DP 外部插件）V3（前 CT001.3，按宿主 V+数字规则改）
  * id: wed-ind.chaoxi.tidal
  * 文件名：CXZB-MuseAi-ZT.js（CXZB=潮汐指标，MuseAi=生成方，ZT=主图）
  * CT001.3（2026-10-24，批量二同步）：宿主批量二新显示口径的插件侧同步，
@@ -38,7 +38,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='CT001.3';
+const ID='wed-ind.chaoxi.tidal', VER='V3';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
 const SELL='#26a69a';       // 卖绿（DESIGN 定 B 红 / S 绿）
