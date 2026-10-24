@@ -55,6 +55,12 @@ const DEFAULT_SETTINGS=Object.freeze({
   directLabelEnabled:true, // 直接标签开关：批量二口径，信号旁直接写精简标签，不只悬停
   dashedLineEnabled:true,  // 虚线开关：批量二口径，信号价位画虚线，不拉满全图
   iconPos:'',              // 潮汐图标位置持久化：''＝默认主图右侧中间，拖动后写 'x,y'（相对主图百分比）
+  minStrength:0,           // 强度滑块：0=全显，拉到数值只显该值以上（批量二）
+  directionFilter:'all',   // 方向筛选：all/buy/sell，与图标窗开关同套筛选
+  notes:{},                // 信号备注：按信号 id 存，跟了/没跟/观察（批量二新增）
+  typeFilter:'all',        // 信号类型筛选：all/分时T/分时信号/K线信号/K线组合（继续优化）
+  failCount:0,             // 信号源连续失败次数：成功清零，失败累加（源健康度）
+  seenCount:0,             // 已看信号数：角标=今天当前股活跃信号数-已看数，换股重算
   viewDate:''              // 正在查看的日期（''＝跟随今天/索引最新一日），翻历史时写入
 });
 const REFRESH_CHOICES=[30,60,120,300];
@@ -122,6 +128,11 @@ function loadSettings(ctx){
   if(REFRESH_CHOICES.includes(Number(saved.refreshSec)))s.refreshSec=Number(saved.refreshSec);
   for(const k of ['overlayEnabled','intradayEnabled','klineEnabled','directLabelEnabled','dashedLineEnabled']) if(typeof saved[k]==='boolean')s[k]=saved[k];
   if(typeof saved.iconPos==='string')s.iconPos=saved.iconPos;
+  if(Number.isFinite(Number(saved.minStrength)))s.minStrength=Math.max(0,Math.min(100,Number(saved.minStrength)));
+  if(['all','buy','sell'].includes(saved.directionFilter))s.directionFilter=saved.directionFilter;
+  if(saved.notes&&typeof saved.notes==='object')s.notes={...saved.notes};
+  if(Number.isFinite(Number(saved.seenCount)))s.seenCount=Math.max(0,Number(saved.seenCount));
+  if(['all','t_signal','t_trade','kline_signal','kline_combo'].includes(saved.typeFilter))s.typeFilter=saved.typeFilter;
   if(/^\d{4}-\d{2}-\d{2}$/.test(String(saved.viewDate||'')))s.viewDate=String(saved.viewDate);
   state.settings=s;
 }
@@ -216,9 +227,10 @@ async function refresh(reason){
     if(!env)throw new Error('信号文件格式不合规');
     state.envelope=env; state.envelopeDate=date;
     state.generatedAt=env.generated_at; state.fetchedAt=Date.now();
-    state.stale=false; state.lastError='';
+    state.stale=false; state.lastError=''; state.failCount=0;
   }catch(e){
     state.lastError=String(e?.message||e||'拉取失败');
+    state.failCount=(state.failCount||0)+1;
     if(state.envelope)state.stale=true;
   }finally{
     state.inflight=false;
@@ -252,6 +264,7 @@ function syncView(){
     const sym=String(v.symbol||'');
     const per=String(v.period||'');
     const changed=(sym&&sym!==state.symbol)||(per&&per!==state.period);
+    if(sym&&sym!==state.symbol){ state.settings.seenCount=0; saveSettings(); }
     if(sym)state.symbol=sym;
     if(per)state.period=per;
     return changed;
@@ -273,6 +286,29 @@ function visibleSignals(){
     out.push(sig);
   }
   return out;
+}
+/* 批量二筛选（与图标窗同套）：强度+方向，筛掉数在状态卡实时显示 */
+function filteredSignals(){
+  const s=state.settings;
+  return visibleSignals().filter(sig=>{
+    if(s.directionFilter!=='all'&&sideOf(sig)!==s.directionFilter)return false;
+    if(s.typeFilter!=='all'){
+      if(s.typeFilter==='kline_signal'&&!String(sig.type||'').startsWith('kline'))return false;
+      if(s.typeFilter!=='kline_signal'&&String(sig.type||'')!==s.typeFilter)return false;
+    }
+    const st=num(sig.strength);
+    if(s.minStrength>0&&(!isNum(st)||st<s.minStrength))return false;
+    return true;
+  });
+}
+function unreadCount(){ return Math.max(0,visibleSignals().length-state.settings.seenCount); }
+/* 信号源断开分类：网络不通/地址错/数据格式不对，三种提示分开写 */
+function sourceErrorText(){
+  const e=String(state.lastError||'');
+  if(!e)return '';
+  if(/格式不合规|JSON|Unexpected/.test(e))return `信号源数据格式不对：${e}`;
+  if(/404|地址|未设置/.test(e))return `信号源地址错：${e}`;
+  return `信号源网络不通：${e}`;
 }
 /* 日K锚点：用 ctx.data.kline.visible() 的实际 K 棒时间归一（合同） */
 function dayBarMs(sig){
@@ -315,7 +351,7 @@ function markersFor(context){
   if(context===CTX_KLINE&&!s.klineEnabled)return [];
   const wantChart=context===CTX_INTRA?'intraday':'kline';
   const list=[];
-  for(const sig of visibleSignals()){
+  for(const sig of filteredSignals()){
     if(String(sig.chart||'')!==wantChart)continue;
     if(context===CTX_KLINE&&!klinePeriodMatches(sig))continue;
     const t=anchorFor(sig,context);
@@ -341,22 +377,31 @@ function statusSegments(){
   const date=state.envelopeDate||targetDate();
   const segs=[];
   if(!baseUrl())segs.push({text:`${date} 未设置信号源`});
-  else if(!state.envelope)segs.push({text:`${date} ${state.lastError?`拉取失败 ${state.lastError}`:'加载中'}`});
+  else if(!state.envelope)segs.push({text:`${date} ${state.lastError?sourceErrorText():'加载中'}${state.envelope?' 旧信号保留':''}`});
+  else if(state.lastError)segs.push({text:`${sourceErrorText()} 旧信号保留`});
   else{
     const gen=state.generatedAt?shTimeStr(Date.parse(state.generatedAt)):'--';
     const got=state.fetchedAt?shTimeStr(state.fetchedAt):'--';
     segs.push({text:`${date} 数据${gen} 拉取${got}${state.stale?' 已过期':''}`});
   }
   if(!s.overlayEnabled)segs.push({text:'标记总开关 关'});
-  const rows=visibleSignals().slice().sort((a,b)=>msOf(a.time)-msOf(b.time));
-  for(const sig of rows.slice(0,6)){
+  const all=visibleSignals(), rows=filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time));
+  const unread=unreadCount();
+  const intraN=all.filter(x=>x.chart==='intraday').length, klineN=all.filter(x=>x.chart==='kline').length;
+  segs.push({text:`分时 ${intraN} 条 / K线 ${klineN} 条 / 合计 ${all.length} 条`});
+  if(state.generatedAt){ const mins=Math.max(0,Math.round((Date.now()-Date.parse(state.generatedAt))/60000)); segs.push({text:`数据新鲜度：生成于 ${mins} 分钟前`}); }
+  if(state.failCount>0)segs.push({text:`信号源连续失败 ${state.failCount} 次`});
+  if(unread>0)segs.push({text:`未看信号 ${unread} 条（角标）`});
+  if(s.minStrength>0||s.directionFilter!=='all')segs.push({text:`筛选：强度≥${s.minStrength} 方向${s.directionFilter==='all'?'全部':s.directionFilter==='buy'?'买':'卖'}，筛掉 ${all.length-rows.length} 条，剩余 ${rows.length} 条`});
+  for(const sig of rows.slice(0,10)){
     const ms=msOf(sig.time);
     const pp=isNum(ms)?shParts(ms):{hour:'--',minute:'--'};
     const tag=sig.chart==='intraday'?'分时':(sig.period==='day'?'日K':sig.period);
-    segs.push({text:`${pp.hour}:${pp.minute} ${sideOf(sig)==='buy'?'买':'卖'} ${sig.price} ${sig.source||''} ${tag}`.slice(0,48)});
+    const note=s.notes[String(sig.id||'')] ? ` 备注：${s.notes[String(sig.id||'')]}` : '';
+    segs.push({text:`${pp.hour}:${pp.minute} ${sideOf(sig)==='buy'?'买':'卖'} ${sig.price} ${labelOf(sig)} ${tag}${note}`.slice(0,80)});
   }
-  if(state.envelope&&rows.length===0)segs.push({text:'当日无信号'});
-  else if(rows.length>6)segs.push({text:`共 ${rows.length} 条`});
+  if(state.envelope&&rows.length===0)segs.push({text:'当日无信号（筛选后）'});
+  else if(rows.length>10)segs.push({text:`共 ${rows.length} 条，倒序显示前 10 条`});
   return segs;
 }
 function renderStatus(){
@@ -407,6 +452,45 @@ function setupUi(){
   add('datePrev','settings.plugin','信号日期 上一日',47,()=>stepDate(-1));
   add('date','settings.plugin','信号日期：今日',48,()=>{ state.settings.viewDate=''; saveSettings(); void refresh('manual'); });
   add('dateNext','settings.plugin','信号日期 下一日',49,()=>stepDate(1));
+  add('strength','settings.plugin','强度筛选：0 全显',50,()=>{
+    const steps=[0,50,65,80,100];
+    const i=steps.indexOf(state.settings.minStrength);
+    state.settings.minStrength=steps[(i+1)%steps.length];
+    saveSettings(); renderAll();
+    const h=state.uiHandles.strength; if(h)try{h.update?.({label:`强度筛选：${state.settings.minStrength===0?'0 全显':`≥${state.settings.minStrength}`}`})}catch(_){}
+  });
+  add('direction','settings.plugin','方向筛选：全部',51,()=>{
+    const steps=['all','buy','sell'];
+    const i=steps.indexOf(state.settings.directionFilter);
+    state.settings.directionFilter=steps[(i+1)%steps.length];
+    saveSettings(); renderAll();
+    const h=state.uiHandles.direction; if(h)try{h.update?.({label:`方向筛选：${state.settings.directionFilter==='all'?'全部':state.settings.directionFilter==='buy'?'只看买':'只看卖'}`})}catch(_){}
+  });
+  add('seen','settings.plugin','已看清零',52,()=>{ state.settings.seenCount=visibleSignals().length; saveSettings(); renderAll(); });
+  add('note','settings.plugin','给最新信号加备注',53,()=>{
+    const latest=filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time))[0];
+    if(!latest)return;
+    let v=null;
+    try{ v=typeof root.prompt==='function'?root.prompt('给最新信号加备注（跟了/没跟/观察）',state.settings.notes[String(latest.id||'')]||''):null; }catch(_){ v=null; }
+    if(typeof v==='string'&&v.trim()){ state.settings.notes[String(latest.id||'')]=v.trim(); saveSettings(); renderAll(); }
+  });
+  add('type','settings.plugin','信号类型：全部',54,()=>{
+    const steps=['all','t_signal','t_trade','kline_signal','kline_combo'];
+    const labels={all:'全部',t_signal:'分时信号',t_trade:'分时成交',kline_signal:'K线信号',kline_combo:'K线组合'};
+    const i=steps.indexOf(state.settings.typeFilter);
+    state.settings.typeFilter=steps[(i+1)%steps.length];
+    saveSettings(); renderAll();
+    const h=state.uiHandles.type; if(h)try{h.update?.({label:`信号类型：${labels[state.settings.typeFilter]}`})}catch(_){}
+  });
+  add('reset','settings.plugin','恢复默认筛选',55,()=>{
+    state.settings.minStrength=0; state.settings.directionFilter='all'; state.settings.typeFilter='all';
+    saveSettings(); renderAll();
+  });
+  add('export','settings.plugin','导出当天信号（复制）',56,()=>{
+    const rows=filteredSignals().slice().sort((a,b)=>msOf(a.time)-msOf(b.time));
+    const csv=['时间,方向,价格,来源,强度,类型'].concat(rows.map(sig=>`${sig.time},${sideOf(sig)==='buy'?'买':'卖'},${sig.price},${sig.source||''},${sig.strength||''},${sig.type||''}`)).join('\n');
+    try{ if(root.navigator?.clipboard?.writeText)void root.navigator.clipboard.writeText(csv); else if(typeof root.prompt==='function')root.prompt('当天信号（复制下面内容）',csv); }catch(_){}
+  });
   add('refreshPanel','panel.analysis','潮汐信号 刷新',21,()=>{ void refresh('manual'); });
   const card=mountUi({slot:'panel.analysis',kind:'stat-card',order:22,title:'今日信号',segments:[{text:'潮汐：未获取信号'}]});
   if(card)state.uiHandles.status=card;
