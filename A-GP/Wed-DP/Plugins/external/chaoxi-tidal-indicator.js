@@ -1,7 +1,11 @@
 (()=>{ 'use strict';
 /*
- * 潮汐量化-潮汐指标（Wed-DP 外部插件）v1 校准版 CT001.2
+ * 潮汐量化-潮汐指标（Wed-DP 外部插件）v1 校准版 CT001.3
  * id: wed-ind.chaoxi.tidal
+ * CT001.3（2026-10-24，批量二同步）：宿主批量二新显示口径的插件侧同步，
+ * 不等宿主新版、不经过 GPT，Muse 内部直接改。marker 仍按 V44 合同发
+ * （老宿主能跑），同时附带新宿主用的直接标签/虚线字段（老宿主忽略
+ * 多余字段，新宿主读到就按新口径画），做到新老宿主双兼容。
  *
  * 定位（DESIGN.md）：只负责显示。本地不算信号、不存历史；信号由云端
  * 「潮汐量化-潮汐数据」组装器发布为公开 HTTPS 直链 JSON，本插件自行
@@ -33,7 +37,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='CT001.2';
+const ID='wed-ind.chaoxi.tidal', VER='CT001.3';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
 const SELL='#26a69a';       // 卖绿（DESIGN 定 B 红 / S 绿）
@@ -47,6 +51,9 @@ const DEFAULT_SETTINGS=Object.freeze({
   overlayEnabled:true,     // 标记总开关（②级；①级为 Host 插件全局启停）
   intradayEnabled:true,    // 分时层开关（③级）
   klineEnabled:true,       // K线层开关（③级）
+  directLabelEnabled:true, // 直接标签开关：批量二口径，信号旁直接写精简标签，不只悬停
+  dashedLineEnabled:true,  // 虚线开关：批量二口径，信号价位画虚线，不拉满全图
+  iconPos:'',              // 潮汐图标位置持久化：''＝默认主图右侧中间，拖动后写 'x,y'（相对主图百分比）
   viewDate:''              // 正在查看的日期（''＝跟随今天/索引最新一日），翻历史时写入
 });
 const REFRESH_CHOICES=[30,60,120,300];
@@ -112,7 +119,8 @@ function loadSettings(ctx){
   const s={...DEFAULT_SETTINGS};
   if(typeof saved.sourceBaseUrl==='string')s.sourceBaseUrl=saved.sourceBaseUrl.trim();
   if(REFRESH_CHOICES.includes(Number(saved.refreshSec)))s.refreshSec=Number(saved.refreshSec);
-  for(const k of ['overlayEnabled','intradayEnabled','klineEnabled']) if(typeof saved[k]==='boolean')s[k]=saved[k];
+  for(const k of ['overlayEnabled','intradayEnabled','klineEnabled','directLabelEnabled','dashedLineEnabled']) if(typeof saved[k]==='boolean')s[k]=saved[k];
+  if(typeof saved.iconPos==='string')s.iconPos=saved.iconPos;
   if(/^\d{4}-\d{2}-\d{2}$/.test(String(saved.viewDate||'')))s.viewDate=String(saved.viewDate);
   state.settings=s;
 }
@@ -131,20 +139,34 @@ function tooltipOf(sig){
   const src=sig.source||TYPE_REGISTRY[sig.type]?.label||'信号';
   return `${p.hour}:${p.minute} ${dir}｜价格 ${sig.price}｜来源 ${src}${strength}${note}`.slice(0,240);
 }
-/* 信号 → 合同 marker 对象 */
+/* 直接标签（批量二定稿）：分时 T · 价 14.88 +300，+为买、-为卖、数字为数量；
+ * 信号里没有数量字段时只写价，不编造数量。时间由横轴位置给出，标签里不写时间。 */
+function labelOf(sig){
+  const buy=sideOf(sig)==='buy';
+  const kind=(sig.type==='t_signal'||sig.type==='t_trade')?'分时 T':(String(sig.type||'').startsWith('kline')?'K线':'信号');
+  const q=num(sig.qty??sig.quantity??sig.shares??sig.amount);
+  const qty=isNum(q)?(buy?` +${q}`:` -${q}`):'';
+  return `${kind} · 价 ${sig.price}${qty}`;
+}
+/* 信号 → 合同 marker 对象：老字段按 V44 合同原样发（老宿主能跑）；
+ * label / dashedLine / labelColor 为批量二新宿主用字段，老宿主忽略多余字段。 */
 function toMarker(sig,anchorMs){
   const buy=sideOf(sig)==='buy';
   const known=Object.prototype.hasOwnProperty.call(TYPE_REGISTRY,sig.type);
+  const color=known?(buy?BUY:SELL):UNKNOWN_COLOR;
   return {
     time:anchorMs,
     value:num(sig.price),
     shape:known?(buy?'arrowUp':'arrowDown'):'circle',   // 未知 type 通用点
-    color:known?(buy?BUY:SELL):UNKNOWN_COLOR,
+    color,
     size:10,
     eventKey:String(sig.id||''),
     tooltip:tooltipOf(sig),
     interactive:true,
-    hoverOnly:true
+    hoverOnly:true,
+    label:state.settings.directLabelEnabled?labelOf(sig):'',
+    dashedLine:state.settings.dashedLineEnabled?{price:num(sig.price),color}:null,
+    labelColor:color
   };
 }
 
