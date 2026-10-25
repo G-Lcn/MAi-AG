@@ -1,6 +1,7 @@
 (()=>{ 'use strict';
 /*
- * 潮汐指标-MuseAi（Wed-DP 外部插件）V4（前 V3）
+ * 潮汐指标-MuseAi（Wed-DP 外部插件）V5（前 V4）
+ * V5（2026-10-25，图标匹配，未推）：宿主图标用状态接口 window.__AGP_TIDAL__（见文末 hook），宿主图标读它画角标/开关、调它改开关/筛选/图标位置/清零；插件本身仍不画图标，图标由宿主画。接口不存在时宿主不编数字、不崩。
  * V4（2026-10-25，V61 实测修）：V61 宿主直接标签的 origin 取 marker.sourceLabel，缺省时回落到插件 id 截断（实测出 "wed-ind.chaoxi. · 价 5.43 ↓"），故 toMarker 必须显式给 sourceLabel（分时 T / K线 / 信号）与 quantity，否则直接标签内容错；虚线本身宿主已画（data-visual-price-line，dash 4 3），不改。
  * id: wed-ind.chaoxi.tidal
  * 文件名：CXZB-MuseAi-ZT.js（CXZB=潮汐指标，MuseAi=生成方，ZT=主图）
@@ -39,7 +40,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='V4';
+const ID='wed-ind.chaoxi.tidal', VER='V5';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
 const SELL='#26a69a';       // 卖绿（DESIGN 定 B 红 / S 绿）
@@ -414,7 +415,61 @@ function renderStatus(){
   const card=state.uiHandles.status;
   if(card){ try{ card.update?.({segments:statusSegments()}); }catch(_){ /* 状态卡更新失败不影响标记 */ } }
 }
-function renderAll(){ renderMarkers(); renderStatus(); refreshToggleLabels(); }
+function renderAll(){ renderMarkers(); renderStatus(); refreshToggleLabels(); emitTidal(); }
+
+/* ---------------- 宿主图标用状态接口（V5 匹配，插件不画图标） ----------------
+ * 宿主图标只读这个接口，不直接写插件 workspace、不自己算信号数。
+ * 接口不存在时宿主不编数字、不崩；接口在时角标 = badge（今天当前股可见信号数 - 已看数）。 */
+const tidalListeners=new Set();
+function tidalState(){
+  const s=state.settings;
+  return {
+    id:ID, version:VER, symbol:state.symbol, period:state.period,
+    date:state.envelopeDate||targetDate(),
+    sourceBaseUrl:baseUrl(),
+    badge:unreadCount(), total:visibleSignals().length, filtered:filteredSignals().length,
+    switches:{overlayEnabled:s.overlayEnabled,intradayEnabled:s.intradayEnabled,klineEnabled:s.klineEnabled,directLabelEnabled:s.directLabelEnabled,dashedLineEnabled:s.dashedLineEnabled},
+    filters:{minStrength:s.minStrength,directionFilter:s.directionFilter,typeFilter:s.typeFilter},
+    iconPos:s.iconPos, viewDate:s.viewDate||'',
+    lastError:state.lastError||'', stale:!!state.stale
+  };
+}
+function emitTidal(){
+  if(!tidalListeners.size)return;
+  let snap=null; try{ snap=tidalState(); }catch(_){ return; }
+  for(const cb of [...tidalListeners]){ try{ cb(snap); }catch(_){} }
+}
+const tidalHook={
+  getState:()=>tidalState(),
+  onChange:(cb)=>{ if(typeof cb!=='function')return ()=>{}; tidalListeners.add(cb); return ()=>tidalListeners.delete(cb); },
+  setSwitch:(key,value)=>{
+    if(!['overlayEnabled','intradayEnabled','klineEnabled','directLabelEnabled','dashedLineEnabled'].includes(key))return false;
+    state.settings[key]=!!value; saveSettings(); renderAll(); return true;
+  },
+  setFilter:(key,value)=>{
+    if(key==='minStrength'){ const v=Math.max(0,Math.min(100,Number(value))); if(!Number.isFinite(v))return false; state.settings.minStrength=v; }
+    else if(key==='directionFilter'){ if(!['all','buy','sell'].includes(value))return false; state.settings.directionFilter=value; }
+    else if(key==='typeFilter'){ if(!['all','t_signal','t_trade','kline_signal','kline_combo'].includes(value))return false; state.settings.typeFilter=value; }
+    else return false;
+    saveSettings(); renderAll(); return true;
+  },
+  setIconPos:(pos)=>{
+    let str='';
+    if(typeof pos==='string')str=pos.trim();
+    else if(pos&&typeof pos==='object'){ const x=Number(pos.x), y=Number(pos.y); if(!Number.isFinite(x)||!Number.isFinite(y))return false; str=`${x},${y}`; }
+    else return false;
+    const parts=str.split(',').map(Number);
+    if(parts.length!==2||!parts.every(n=>Number.isFinite(n)&&n>=0&&n<=100))return false;
+    state.settings.iconPos=str; saveSettings(); emitTidal(); return true;
+  },
+  markSeen:()=>{ state.settings.seenCount=visibleSignals().length; saveSettings(); renderAll(); return true; },
+  setViewDate:(date)=>{
+    if(date!==''&&!/^\d{4}-\d{2}-\d{2}$/.test(String(date)))return false;
+    state.settings.viewDate=String(date); saveSettings(); void refresh('icon-date'); return true;
+  },
+  refresh:()=>{ void refresh('icon-manual'); return true; }
+};
+root.__AGP_TIDAL__=tidalHook;
 
 /* ---------------- UI（ctx.ui.mount：settings.plugin + panel.analysis，合同） ---------------- */
 function mountUi(spec){
@@ -550,6 +605,8 @@ function activate(ctx){
     for(const context of [CTX_INTRA,CTX_KLINE]){ try{ state.layers[context]?.remove?.(); }catch(_){} }
     for(const k of Object.keys(state.uiHandles)){ try{ state.uiHandles[k]?.remove?.(); }catch(_){} }
     state.layers={}; state.uiHandles={};
+    tidalListeners.clear();
+    if(root.__AGP_TIDAL__===tidalHook)delete root.__AGP_TIDAL__;
   };
 }
 
