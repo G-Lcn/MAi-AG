@@ -1,7 +1,8 @@
 (()=>{ 'use strict';
 /*
- * 潮汐指标-MuseAi（Wed-DP 外部插件）V5（前 V4）
- * V5（2026-10-25，图标匹配，未推）：宿主图标用状态接口 window.__AGP_TIDAL__（见文末 hook），宿主图标读它画角标/开关、调它改开关/筛选/图标位置/清零；插件本身仍不画图标，图标由宿主画。接口不存在时宿主不编数字、不崩。
+ * 潮汐指标-MuseAi（Wed-DP 外部插件）V6（前 V5）
+ * V6（2026-10-25，V62 宿主实测对齐）：V62 宿主归一化只认 settings（非 switches/filters）、badgeCount/activeSignalCount、setOption/setIconPosition/setSignalDatePreset 等名字，V5 的 switches/filters/markSeen/setIconPos 宿主读不到/写不动，故 getState 改按 V62 口径输出 settings+计数+位置，写方法、位置方法、日期导航、清零方法全部按宿主名补齐，旧名字保留兼容。
+ * V5（2026-10-25，图标匹配）：宿主图标用状态接口 window.__AGP_TIDAL__，宿主图标读它画角标/开关、调它改开关/筛选/图标位置/清零；插件本身仍不画图标，图标由宿主画。接口不存在时宿主不编数字、不崩。
  * V4（2026-10-25，V61 实测修）：V61 宿主直接标签的 origin 取 marker.sourceLabel，缺省时回落到插件 id 截断（实测出 "wed-ind.chaoxi. · 价 5.43 ↓"），故 toMarker 必须显式给 sourceLabel（分时 T / K线 / 信号）与 quantity，否则直接标签内容错；虚线本身宿主已画（data-visual-price-line，dash 4 3），不改。
  * id: wed-ind.chaoxi.tidal
  * 文件名：CXZB-MuseAi-ZT.js（CXZB=潮汐指标，MuseAi=生成方，ZT=主图）
@@ -40,7 +41,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='V5';
+const ID='wed-ind.chaoxi.tidal', VER='V6';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
 const SELL='#26a69a';       // 卖绿（DESIGN 定 B 红 / S 绿）
@@ -421,15 +422,35 @@ function renderAll(){ renderMarkers(); renderStatus(); refreshToggleLabels(); em
  * 宿主图标只读这个接口，不直接写插件 workspace、不自己算信号数。
  * 接口不存在时宿主不编数字、不崩；接口在时角标 = badge（今天当前股可见信号数 - 已看数）。 */
 const tidalListeners=new Set();
+function tidalIconPosFrac(){
+  const parts=String(state.settings.iconPos||'').split(',').map(Number);
+  if(parts.length!==2||!parts.every(n=>Number.isFinite(n)))return null;
+  return {xPct:parts[0]/100, yPct:parts[1]/100, x:parts[0]/100, y:parts[1]/100};
+}
 function tidalState(){
   const s=state.settings;
+  const all=visibleSignals(), rows=filteredSignals();
+  const date=state.envelopeDate||targetDate();
+  const switches={overlayEnabled:s.overlayEnabled,intradayEnabled:s.intradayEnabled,klineEnabled:s.klineEnabled,directLabelEnabled:s.directLabelEnabled,dashedLineEnabled:s.dashedLineEnabled};
+  const settings={...switches,
+    minStrength:s.minStrength, strengthThreshold:s.minStrength,
+    direction:s.directionFilter, directionFilter:s.directionFilter,
+    signalType:s.typeFilter, signalTypeFilter:s.typeFilter,
+    sourceUrl:baseUrl(), signalSourceUrl:baseUrl(), sourceBaseUrl:baseUrl(),
+    signalDate:date, iconPos:s.iconPos};
+  const pos=tidalIconPosFrac();
   return {
     id:ID, version:VER, symbol:state.symbol, period:state.period,
-    date:state.envelopeDate||targetDate(),
-    sourceBaseUrl:baseUrl(),
-    badge:unreadCount(), total:visibleSignals().length, filtered:filteredSignals().length,
-    switches:{overlayEnabled:s.overlayEnabled,intradayEnabled:s.intradayEnabled,klineEnabled:s.klineEnabled,directLabelEnabled:s.directLabelEnabled,dashedLineEnabled:s.dashedLineEnabled},
-    filters:{minStrength:s.minStrength,directionFilter:s.directionFilter,typeFilter:s.typeFilter},
+    date, signalDate:date,
+    sourceBaseUrl:baseUrl(), sourceUrl:baseUrl(), signalSourceUrl:baseUrl(),
+    badge:unreadCount(), badgeCount:unreadCount(), unreadCount:unreadCount(),
+    total:all.length, activeSignalCount:all.length, todayActiveCount:all.length,
+    filtered:rows.length, remainingCount:rows.length, filteredCount:all.length-rows.length,
+    counts:{remaining:rows.length, filtered:all.length-rows.length},
+    settings, switches, filters:{minStrength:s.minStrength,directionFilter:s.directionFilter,typeFilter:s.typeFilter},
+    signalTypes:[{value:'t_signal',label:'分时信号'},{value:'t_trade',label:'分时成交'},{value:'kline_signal',label:'K线信号'},{value:'kline_combo',label:'K线组合'}],
+    positions:pos?{intraday:pos,kline:pos}:{},
+    iconPositions:pos?{intraday:pos,kline:pos}:{},
     iconPos:s.iconPos, viewDate:s.viewDate||'',
     lastError:state.lastError||'', stale:!!state.stale
   };
@@ -439,33 +460,71 @@ function emitTidal(){
   let snap=null; try{ snap=tidalState(); }catch(_){ return; }
   for(const cb of [...tidalListeners]){ try{ cb(snap); }catch(_){} }
 }
+function tidalSetIconPosRaw(a,b){
+  // 宿主调 setIconPosition(context, {xPct,yPct})；旧调 setIconPos(pos)；xPct/yPct 为 0-1 小数，x/y 为 0-100 百分比时也兼容
+  let pos=b!==undefined?b:a;
+  let x,y;
+  if(typeof pos==='string'){ const parts=pos.split(',').map(Number); if(parts.length!==2)return false; [x,y]=parts; if(x>1||y>1){ /* 已是百分比 */ } else { x*=100; y*=100; } }
+  else if(pos&&typeof pos==='object'){
+    const xv=Number(pos.xPct??pos.x), yv=Number(pos.yPct??pos.y);
+    if(!Number.isFinite(xv)||!Number.isFinite(yv))return false;
+    // 宿主给 0-1 小数；若给的是 0-100 百分比（>1），直接用
+    x=xv>1?xv:xv*100; y=yv>1?yv:yv*100;
+  } else return false;
+  if(!Number.isFinite(x)||!Number.isFinite(y)||x<0||x>100||y<0||y>100)return false;
+  state.settings.iconPos=`${x},${y}`; saveSettings(); emitTidal(); return true;
+}
+function tidalSetOption(key,value){
+  if(['overlayEnabled','intradayEnabled','klineEnabled','directLabelEnabled','dashedLineEnabled'].includes(key)){
+    state.settings[key]=!!value; saveSettings(); renderAll(); return true;
+  }
+  if(key==='minStrength'){ const v=Math.max(0,Math.min(100,Number(value))); if(!Number.isFinite(v))return false; state.settings.minStrength=v; saveSettings(); renderAll(); return true; }
+  if(key==='direction'||key==='directionFilter'){ if(!['all','buy','sell'].includes(value))return false; state.settings.directionFilter=value; saveSettings(); renderAll(); return true; }
+  if(key==='signalType'||key==='typeFilter'||key==='signalTypeFilter'){ if(!['all','t_signal','t_trade','kline_signal','kline_combo'].includes(value))return false; state.settings.typeFilter=value; saveSettings(); renderAll(); return true; }
+  return false;
+}
+function tidalMarkSeen(){ state.settings.seenCount=visibleSignals().length; saveSettings(); renderAll(); return true; }
 const tidalHook={
   getState:()=>tidalState(),
+  snapshot:()=>tidalState(),
   onChange:(cb)=>{ if(typeof cb!=='function')return ()=>{}; tidalListeners.add(cb); return ()=>tidalListeners.delete(cb); },
+  subscribe:(cb)=>{ if(typeof cb!=='function')return ()=>{}; tidalListeners.add(cb); return ()=>tidalListeners.delete(cb); },
   setSwitch:(key,value)=>{
     if(!['overlayEnabled','intradayEnabled','klineEnabled','directLabelEnabled','dashedLineEnabled'].includes(key))return false;
     state.settings[key]=!!value; saveSettings(); renderAll(); return true;
   },
   setFilter:(key,value)=>{
     if(key==='minStrength'){ const v=Math.max(0,Math.min(100,Number(value))); if(!Number.isFinite(v))return false; state.settings.minStrength=v; }
-    else if(key==='directionFilter'){ if(!['all','buy','sell'].includes(value))return false; state.settings.directionFilter=value; }
-    else if(key==='typeFilter'){ if(!['all','t_signal','t_trade','kline_signal','kline_combo'].includes(value))return false; state.settings.typeFilter=value; }
+    else if(key==='directionFilter'||key==='direction'){ if(!['all','buy','sell'].includes(value))return false; state.settings.directionFilter=value; }
+    else if(key==='typeFilter'||key==='signalType'){ if(!['all','t_signal','t_trade','kline_signal','kline_combo'].includes(value))return false; state.settings.typeFilter=value; }
     else return false;
     saveSettings(); renderAll(); return true;
   },
-  setIconPos:(pos)=>{
-    let str='';
-    if(typeof pos==='string')str=pos.trim();
-    else if(pos&&typeof pos==='object'){ const x=Number(pos.x), y=Number(pos.y); if(!Number.isFinite(x)||!Number.isFinite(y))return false; str=`${x},${y}`; }
-    else return false;
-    const parts=str.split(',').map(Number);
-    if(parts.length!==2||!parts.every(n=>Number.isFinite(n)&&n>=0&&n<=100))return false;
-    state.settings.iconPos=str; saveSettings(); emitTidal(); return true;
-  },
-  markSeen:()=>{ state.settings.seenCount=visibleSignals().length; saveSettings(); renderAll(); return true; },
+  setOption:(key,value)=>tidalSetOption(key,value),
+  updateSettings:(obj)=>{ if(!obj||typeof obj!=='object')return false; let ok=true; for(const [k,v] of Object.entries(obj)) if(!tidalSetOption(k,v)) ok=false; return ok; },
+  setSettings:(obj)=>{ if(!obj||typeof obj!=='object')return false; let ok=true; for(const [k,v] of Object.entries(obj)) if(!tidalSetOption(k,v)) ok=false; return ok; },
+  setIconPos:(...args)=>tidalSetIconPosRaw(...args),
+  setIconPosition:(...args)=>tidalSetIconPosRaw(...args),
+  setPosition:(...args)=>tidalSetIconPosRaw(...args),
+  markSeen:tidalMarkSeen,
+  markViewed:tidalMarkSeen,
+  acknowledgeViewed:tidalMarkSeen,
+  clearUnreadCount:tidalMarkSeen,
   setViewDate:(date)=>{
     if(date!==''&&!/^\d{4}-\d{2}-\d{2}$/.test(String(date)))return false;
     state.settings.viewDate=String(date); saveSettings(); void refresh('icon-date'); return true;
+  },
+  setSignalDatePreset:(preset)=>{
+    if(preset==='today'){ state.settings.viewDate=''; saveSettings(); void refresh('icon-date'); return true; }
+    if(preset==='previous'){ stepDate(-1); return true; }
+    if(preset==='next'){ stepDate(1); return true; }
+    return false;
+  },
+  setSignalDateToday:()=>{ state.settings.viewDate=''; saveSettings(); void refresh('icon-date'); return true; },
+  shiftSignalDate:(delta)=>{
+    if(delta===-1||delta==='previous'){ stepDate(-1); return true; }
+    if(delta===1||delta==='next'){ stepDate(1); return true; }
+    return false;
   },
   refresh:()=>{ void refresh('icon-manual'); return true; }
 };
