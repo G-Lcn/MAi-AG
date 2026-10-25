@@ -1,6 +1,7 @@
 (()=>{ 'use strict';
 /*
- * 潮汐指标-MuseAi（Wed-DP 外部插件）V3（前 CT001.3，按宿主 V+数字规则改）
+ * 潮汐指标-MuseAi（Wed-DP 外部插件）V4（前 V3）
+ * V4（2026-10-25，V61 实测修）：V61 宿主直接标签的 origin 取 marker.sourceLabel，缺省时回落到插件 id 截断（实测出 "wed-ind.chaoxi. · 价 5.43 ↓"），故 toMarker 必须显式给 sourceLabel（分时 T / K线 / 信号）与 quantity，否则直接标签内容错；虚线本身宿主已画（data-visual-price-line，dash 4 3），不改。
  * id: wed-ind.chaoxi.tidal
  * 文件名：CXZB-MuseAi-ZT.js（CXZB=潮汐指标，MuseAi=生成方，ZT=主图）
  * CT001.3（2026-10-24，批量二同步）：宿主批量二新显示口径的插件侧同步，
@@ -38,7 +39,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='V3';
+const ID='wed-ind.chaoxi.tidal', VER='V4';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
 const SELL='#26a69a';       // 卖绿（DESIGN 定 B 红 / S 绿）
@@ -166,6 +167,8 @@ function toMarker(sig,anchorMs){
   const buy=sideOf(sig)==='buy';
   const known=Object.prototype.hasOwnProperty.call(TYPE_REGISTRY,sig.type);
   const color=known?(buy?BUY:SELL):UNKNOWN_COLOR;
+  const kind=(sig.type==='t_signal'||sig.type==='t_trade')?'分时 T':(String(sig.type||'').startsWith('kline')?'K线':'信号');
+  const q=num(sig.qty??sig.quantity??sig.shares??sig.amount);
   return {
     time:anchorMs,
     value:num(sig.price),
@@ -177,6 +180,9 @@ function toMarker(sig,anchorMs){
     interactive:true,
     hoverOnly:true,
     label:state.settings.directLabelEnabled?labelOf(sig):'',
+    // V61 宿主直接标签：origin = sourceLabel，缺省回落插件 id 截断，故必须显式给；quantity 有则宿主画 +qty/-qty，无则画箭头
+    sourceLabel:kind,
+    quantity:isNum(q)&&q>0?Math.floor(q):0,
     dashedLine:state.settings.dashedLineEnabled?{price:num(sig.price),color}:null,
     labelColor:color
   };
