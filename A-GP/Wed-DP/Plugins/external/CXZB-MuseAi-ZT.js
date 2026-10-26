@@ -72,7 +72,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='V26';
+const ID='wed-ind.chaoxi.tidal', VER='V28';
 const DEFAULT_SOURCE='https://raw.githubusercontent.com/G-Lcn/MAi-AG/main/A-GP/Wed-DP/Plugins/external/CXZB-MuseAi-ZT';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
@@ -782,8 +782,11 @@ function statusText(){
 function areaSignalCount(){
   const all=visibleSignals(), host=String(state.period||'');
   if(host==='time')return all.filter(x=>String(x.chart||'')==='intraday').length;
-  if(host==='day'||host==='m30'||host==='30m'||host==='m5'||host==='5m')return all.filter(x=>String(x.chart||'')==='kline'&&klinePeriodMatches(x)).length;
-  return all.length;
+  if(!host)return all.length;
+  // 任何 K线周期都只算同周期 K线信号：周/月/60分/2日目前无信号数据，算出来就是 0，不再回落到全股总数
+  const want={day:'day',m30:'30m','30m':'30m',m5:'5m','5m':'5m',m60:'60m','60m':'60m',day2:'day2',week:'week',month:'month'}[host];
+  if(want===undefined)return all.length;
+  return all.filter(x=>String(x.chart||'')==='kline'&&String(x.period||'')===want).length;
 }
 function summaryLine(){
   const all=visibleSignals(), rows=filteredSignals();
@@ -1207,16 +1210,14 @@ function selfPanelGroups(){
   const s=state.settings, sum=summaryLine(), fb=filterBreakdown();
   const date=state.envelopeDate||targetDate();
   return [
-    {id:'switches', title:'开关组', defaultCollapsed:true, rows:[
+    {id:'switches', title:'开关组', defaultCollapsed:false, rows:[
       {id:'intraday', kind:'toggle', label:'分时标记', value:!!s.intradayEnabled},
       {id:'kline', kind:'toggle', label:'K线标记', value:!!s.klineEnabled},
       {id:'direct', kind:'toggle', label:'直接标签', value:!!s.directLabelEnabled},
     ]},
     {id:'signals', title:'今日活跃信号', defaultCollapsed:false, rows:[
       {id:'active', kind:'text', label:`共${sum.total}条 · 剩余${fb.remaining||sum.total}条 · 未看${sum.unread}条`, value:''},
-      {id:'prevDay', kind:'button', label:'上一日', value:'上一日'},
-      {id:'today', kind:'button', label:'当日', value:'当日'},
-      {id:'nextDay', kind:'button', label:'下一日', value:'下一日'},
+      ...filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time)).map(sig=>{ const buy=sideOf(sig)==='buy'; const q=num(sig.qty??sig.quantity??sig.shares??sig.amount); const qty=isNum(q)?(buy?` +${q}`:` -${q}`):''; return {id:`sig-${sig.id||sig.time}`, kind:'text', label:`${String(sig.time||'').slice(11,16)} ${styleOf(sig).code} ${buy?'▲买':'▼卖'} ${sig.price}${qty}`, value:''}; }),
     ]},
     {id:'advanced', title:'高级设置', defaultCollapsed:true, rows:[
       {id:'source', kind:'text', label:`信号源：${baseUrl()}`, value:''},
@@ -1237,17 +1238,21 @@ function selfPanelGroups(){
  * 折叠按钮在标题行最右且放大、多列网格，全部在 iframe 内画，功能与标准分组一一对应。
  * 折叠状态会话内保留在 state.cardCollapsed，默认开关组折叠、今日活跃展开、高级设置折叠。 */
 function escHtml(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function cardCollapsed(){ if(!state.cardCollapsed) state.cardCollapsed={switches:true, signals:false, advanced:true}; return state.cardCollapsed; }
+function cardCollapsed(){ if(!state.cardCollapsed) state.cardCollapsed={switches:false, signals:false, advanced:true}; return state.cardCollapsed; }
 function selfPanelHtml(){
   const s=state.settings, sum=summaryLine(), fb=filterBreakdown(), cc=cardCollapsed();
-  const css='*{box-sizing:border-box}.wrap{font-family:inherit;color:#dce8ee;padding:2px;width:100%;overflow-x:hidden}.meta{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:2px 2px 6px;border-bottom:1px solid #293747;color:#97b5c6;font-size:12px}.meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.card{border:1px solid #3d6074;border-radius:8px;background:#162636;padding:6px 8px;margin:6px 0;width:100%}.card-head{display:flex;align-items:center;justify-content:space-between;gap:6px}.card-title{font-weight:700;font-size:13px}.collapse{font-size:14px;line-height:1;padding:2px 7px;border:1px solid #435668;border-radius:5px;background:#203044;color:#dce8ee;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:4px;width:100%}.gridAuto{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:4px;width:100%}.gridAutoBtn{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:4px;width:100%}.gridAutoWide{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px;width:100%}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;width:100%}.item{display:flex;align-items:center;justify-content:space-between;gap:4px;background:#101b27;border:1px solid #273644;border-radius:5px;padding:4px 6px;font-size:12px;min-width:0}.item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.item button,.item select{background:#203044;color:#dce8ee;border:1px solid #435668;border-radius:4px;padding:3px 5px;cursor:pointer;max-width:100%}.full{margin:4px 0;font-size:12px;color:#97b5c6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.btn{width:100%;background:#203044;color:#dce8ee;border:1px solid #435668;border-radius:5px;padding:5px 6px;cursor:pointer}';
-  const card=(id,title,body)=>{ const c=!!cc[id]; return '<div class="card"><div class="card-head"><span class="card-title">'+escHtml(title)+'</span><button class="collapse" data-collapse="'+id+'" aria-label="折叠">'+(c?'▸':'▾')+'</button></div>'+(c?'':'<div class="card-body">'+body+'</div>')+'</div>'; };
+  const css='*{box-sizing:border-box}.wrap{font-family:inherit;color:#dce8ee;padding:2px;width:100%;overflow-x:hidden}.meta{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:2px 2px 6px;border-bottom:1px solid #293747;color:#97b5c6;font-size:12px}.meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.card{border:1px solid #3d6074;border-radius:8px;background:#162636;padding:6px 8px;margin:6px 0;width:100%}.card-head{display:flex;align-items:center;justify-content:space-between;gap:6px}.card-title{font-weight:700;font-size:13px}.collapse{font-size:14px;line-height:1;padding:2px 7px;border:1px solid #435668;border-radius:5px;background:#203044;color:#dce8ee;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:4px;width:100%}.gridAuto{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:4px;width:100%}.gridAutoBtn{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:4px;width:100%}.gridAutoWide{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px;width:100%}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;width:100%}.item{display:flex;align-items:center;justify-content:space-between;gap:4px;background:#101b27;border:1px solid #273644;border-radius:5px;padding:4px 6px;font-size:12px;min-width:0}.item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.item button,.item select{background:#203044;color:#dce8ee;border:1px solid #435668;border-radius:4px;padding:3px 5px;cursor:pointer;max-width:100%}.full{margin:4px 0;font-size:12px;color:#97b5c6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.btn{width:100%;background:#203044;color:#dce8ee;border:1px solid #435668;border-radius:5px;padding:5px 6px;cursor:pointer}.badge{display:inline-block;min-width:18px;text-align:center;background:#2a4a5e;color:#dce8ee;border:1px solid #435668;border-radius:9px;padding:0 5px;font-size:11px;margin-left:4px}.siglist{width:100%}.sigrow{display:flex;justify-content:space-between;gap:6px;padding:4px 6px;border-bottom:1px solid #22313f;font-size:12px}.sigrow:last-child{border-bottom:none}.sigrow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.title-actions{display:flex;align-items:center;gap:6px}.title-actions .refresh{font-size:14px;line-height:1;padding:2px 7px;border:1px solid #435668;border-radius:5px;background:#203044;color:#dce8ee;cursor:pointer}.lastfetch{font-size:11px;color:#97b5c6;white-space:nowrap}';
+  const card=(id,title,body,headExtra)=>{ const c=!!cc[id]; return '<div class="card"><div class="card-head"><span class="card-title">'+escHtml(title)+'</span><span class="title-actions">'+(headExtra||'')+'<button class="collapse" data-collapse="'+id+'" aria-label="折叠">'+(c?'▸':'▾')+'</button></span></div>'+(c?'':'<div class="card-body">'+body+'</div>')+'</div>'; };
+  const allVis=visibleSignals(), intraCnt=allVis.filter(x=>x.chart==='intraday').length, klineCnt=allVis.filter(x=>x.chart==='kline').length, filtCnt=filteredSignals().length;
   const sw='<div class="gridAuto">'
-    +'<label class="item"><span>分时标记</span><input type="checkbox" data-row="intraday" '+(s.intradayEnabled?'checked':'')+'></label>'
-    +'<label class="item"><span>K线标记</span><input type="checkbox" data-row="kline" '+(s.klineEnabled?'checked':'')+'></label>'
-    +'<label class="item"><span>直接标签</span><input type="checkbox" data-row="direct" '+(s.directLabelEnabled?'checked':'')+'></label></div>';
-  const sig='<div class="full">共'+sum.total+'条 · 剩余'+(fb.remaining||sum.total)+'条 · 未看'+sum.unread+'条</div><div class="gridAutoBtn">'
-    +'<button class="btn" data-row="prevDay">上一日</button><button class="btn" data-row="today">当日</button><button class="btn" data-row="nextDay">下一日</button></div>';
+    +'<label class="item"><span>分时标记<span class="badge">'+intraCnt+'</span></span><input type="checkbox" data-row="intraday" '+(s.intradayEnabled?'checked':'')+'></label>'
+    +'<label class="item"><span>K线标记<span class="badge">'+klineCnt+'</span></span><input type="checkbox" data-row="kline" '+(s.klineEnabled?'checked':'')+'></label>'
+    +'<label class="item"><span>直接标签<span class="badge">'+filtCnt+'</span></span><input type="checkbox" data-row="direct" '+(s.directLabelEnabled?'checked':'')+'></label></div>';
+  const sigRows=filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time)).map(sig=>{ const buy=sideOf(sig)==='buy'; const q=num(sig.qty??sig.quantity??sig.shares??sig.amount); const qty=isNum(q)?(buy?' +'+q:' -'+q):''; return '<div class="sigrow"><span>'+escHtml(String(sig.time||'').slice(11,16)+' '+styleOf(sig).code+' '+(buy?'▲买':'▼卖')+' '+sig.price+qty)+'</span><span>'+escHtml(sig.source||'')+'</span></div>'; }).join('')||'<div class="full">当日无信号</div>';
+  const lastFetch=state.fetchedAt?shTimeStr(state.fetchedAt).slice(0,5):'--:--';
+  const autoMode=state.settings.viewDate?'历史·手动':(isTradingNow()?'自动':'盘外·手动');
+  const sigHead='<span class="lastfetch">上次 '+lastFetch+' · '+autoMode+'</span><button class="refresh" data-row="refresh" title="手动刷新信号">↻</button>';
+  const sig='<div class="full">共'+sum.total+'条 · 剩余'+(fb.remaining||sum.total)+'条 · 未看'+sum.unread+'条</div><div class="siglist">'+sigRows+'</div>';
   const adv='<div class="full" title="'+escHtml(baseUrl())+'">信号源：'+escHtml(baseUrl())+'</div><div class="gridAutoWide">'
     +'<button class="btn" data-row="refresh">刷新信号</button><button class="btn" data-row="seen">已看清零</button>'
     +'<button class="btn" data-row="resetFilters">恢复默认筛选</button><button class="btn" data-row="resetAll">恢复默认设置</button></div><div class="gridAutoWide" style="margin-top:6px">'
@@ -1257,9 +1262,9 @@ function selfPanelHtml(){
     +'<label class="item"><span>强度 ≥'+s.minStrength+'</span><input type="range" data-row="strength" min="0" max="100" step="1" value="'+s.minStrength+'"></label></div>';
   const js="document.addEventListener('click',function(e){var c=e.target.closest('[data-collapse]');if(c){var card=c.closest('.card');var body=card&&card.querySelector('.card-body');if(body){var hid=body.style.display==='none';body.style.display=hid?'':'none';c.textContent=hid?'▾':'▸';}parent.postMessage({type:'card-collapse',group:c.getAttribute('data-collapse')},'*');return;}var t=e.target.closest('[data-row]');if(t&&t.tagName==='BUTTON'){parent.postMessage({type:'card-control',row:t.getAttribute('data-row'),value:true},'*');}});document.addEventListener('change',function(e){var t=e.target.closest('[data-row]');if(!t)return;var v=t.type==='checkbox'?t.checked:(t.type==='range'?Number(t.value):t.value);parent.postMessage({type:'card-control',row:t.getAttribute('data-row'),value:v},'*');});";
   const meta='<div class="meta"><span>'+escHtml(sum.symbol||'--')+' · 接口已连接</span><span>更新日期：'+escHtml(state.envelopeDate||targetDate())+'</span></div>';
-  return '<style>'+css+'</style><div class="wrap">'+meta+card('switches','开关组',sw)+card('signals','今日活跃信号',sig)+card('advanced','高级设置',adv)+'</div><script>'+js+'</'+'script>';
+  return '<style>'+css+'</style><div class="wrap">'+meta+card('switches','开关组',sw)+card('signals','今日活跃信号',sig,sigHead)+card('advanced','高级设置',adv)+'</div><script>'+js+'</'+'script>';
 }
-function panelFrameHeight(){ const cc=cardCollapsed(); let h=40; h+=40*3; if(!cc.switches) h+=50; if(!cc.signals) h+=70; if(!cc.advanced) h+=200; return Math.max(160, Math.min(620, h)); }
+function panelFrameHeight(){ const cc=cardCollapsed(); let h=40; h+=40*3; if(!cc.switches) h+=50; if(!cc.signals) h+=40+Math.min(160, Math.max(30, filteredSignals().length*26)); if(!cc.advanced) h+=200; return Math.max(160, Math.min(620, h)); }
 function panelCardControl(rid,v){
     if(rid==='intraday'){ state.settings.intradayEnabled=!!v; }
     else if(rid==='kline'){ state.settings.klineEnabled=!!v; }
