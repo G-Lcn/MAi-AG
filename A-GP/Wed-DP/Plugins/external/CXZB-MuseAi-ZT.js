@@ -1,6 +1,16 @@
 (()=>{ 'use strict';
 /*
+ * 潮汐指标-MuseAi（V15，本地-only，未推）
+ * V15（2026-10-25，本地-only，未推）：版本号显示 + 折叠展示 + 移除无意义开关。用户看截图后定：取消“标记总开关”和“虚线”两个开关——插件面删掉这两个开关，内部固定开启（总开关恒开、虚线恒开），分时/K线/直接标签各自开关不动；hook 里这两个字段恒 true 兼容宿主，宿主面板不因此变未知；宿主侧删开关另走宿主信，插件不编造宿主行为。随后用户再定全量精简：全部开关/按钮/状态卡行/列表项/筛选项逐个再问一次，无决策信息损失就移除（见报告移除清单），只留精简有意义的。
+ * V15（2026-10-25，本地-only，未推）：版本号显示 + 折叠展示。版本号不再只藏在 hook 里，状态卡首行即写“潮汐 V15”，使用者一眼知道装的是哪一版；状态卡分段可折叠（次要段、信号列表），折叠只改状态卡文案，不改标记、不改角标、不改筛选，折叠状态会话内保留、重激活复位；开关组（标记/分时/K线/强度/方向/类型/策略/密集/只看未看）默认收起，只露一个“开关组：展开”入口，点开才挂全部开关按钮，收起时开关本身状态与信号显示不变。被砍的方案：版本号单独成行（多占 1 行，V13 刚压过行数）、每段 6 个独立按钮（设置面板臃肿，V13 刚砍过重复按钮）、折叠时整段删除（看不出该段存在）、折叠状态写进 workspace 持久化（任务定会话内保留，且重激活复位更可预测）、折叠图上标记本身（会丢信号，违背折叠不丢信号）。
  * 潮汐指标-MuseAi（Wed-DP 外部插件）V10（前 V9，本地-only）
+ * V14（2026-10-25，本地-only，未推）：历史信号日期清单 1 行 + 翻日跳过已知空日。诚实口径：index.json 只给日期、不给计数，逐日拉取算计数是上一轮已砍的 N 倍拉取，本轮不做；“空”只认会话内已拉取过的缓存信封（当前股 confirmed 信号数为 0），未拉取过的日期不谎称有/无信号，只列日期；翻日时跳过已知空日，全部已知空日时才落回最近一日不卡死。顺手统一 V13 筛选行文案（“图上标记”→“图上”，与筛掉>0 支一致）。
+ * V16（2026-10-26，本地-only 大改版，未推）：登记表扩到 9 种形状（V63 合同 star/flag + glyph/glyphColor/glyphSize），日K改 star+日字、K线组合改 flag+组字、新增分时突破 star+突字；状态卡新增三周期总览行，状态行/筛选行在无异常无筛选时并入总览（自我否定）；旧 7 种回归不破。
+ * V18（2026-10-26，本地-only，未推，核实后改）：V15/V16 的版本号与开关折叠在截图里看不到，不是功能没做，是放错了面——版本号只在 panel.analysis 状态卡首行，开关按钮只在 settings.plugin 面；宿主把状态卡渲染成单行横条（height 22px、nowrap），把设置按钮放进 display:none 的插件独立设置对话框，主图 + 宿主图标面板截图永远拍不到这两处；分析面板默认折叠（宽 32px），不展开 + 不点“插件”页连首段都看不到。本轮把两者移到使用者能看到的地方：状态卡首段缩短为一屏能看完的“版本 + 股 + 共几条 + 未看 + 开关折叠状态”，不再靠横向溢出的后段；设置面顶部（order 39）新增“潮汐指标 V18 · 开关组”入口按钮，点它即开关组展开/收起，标签随折叠状态同步。V17 小圆点改动原样保留。
+ * V17（2026-10-26，本地-only，未推，用户反馈必改）：V16 大星形/旗形压在分时实时价位线上太遮挡。分时实时线一律改小圆点（大小 6，强信号 7，不透明 0.9，无 glyph，不压价位线），买/卖仍靠红/青颜色 + 标签 ▲/▼ + 列表符号区分；大形状（star/flag 及原三角/箭头/菱形/方块）不再压在分时实时价位上，改为提醒/备注用途：上一条信号提醒行、信号列表符号、hook previousSignal/reminderSignals（大形状+glyph+代码），以及 K线历史标注（日K star、日K组合 flag 仍在 K线图上，不属分时实时线）。分时坐标、数量、面板、总览不变。
+ * V13（2026-10-25，自我否定迭代，未推）：主动否定自己以前留下的东西。砍：网络图标包拉取（内置+registerIcon 已够，真实目录本就没有 icons.json，包只带来一次额外拉取与 3 秒超时面）；状态卡图标行；联想明细 3 行（只留计数行，明细与列表重复）；信号源行里的拉取/缓存计数（诊断数，不是决策信息）；重复按钮 4 个：信号源默认/自定义切换（与恢复默认信号源重复）、给已定位信号加备注（与给最新信号加备注重复入口）、导出复制按钮（hook exportCsv 保留）、刷新间隔循环按钮（4 档循环点 3 次才到目标档，且无证据用户改过间隔，默认 60 秒保留）。
+ * V12（2026-10-25，等待期本地迭代，未推）：在 V11 基础上只补一处筛选行超长——筛掉>0 时零拆解项（强度 0·类型 0·策略 0）同样是零信息，改为只列非零拆解项，实测方向筛 82 字→约 55 字；V11 未推即被本地迭代取代，不产生远程版本 churn。
+ * V11（2026-10-25，筛选迭代，非叠加迭代）：按用户新思维——先发散 24 候选、实测、再筛选。只留 3 项：①列表强度条（正强度分档，0/null 无条，不编造）；②列表最新一条行前 ★；③筛掉为 0 时筛选行压短（原 83 字超 80 字上限，零信息拆解不占行）。其余全部砍掉，见 tests/2026-10-25_V11-screening-report.md。
  * V10（2026-10-25，本地-only 图标库，内置优先调整）：核心能力一律内置在插件文件里内部调用，不依赖网络图标包、不依赖宿主往返。STYLE_REGISTRY 即内置图标登记表（形状+颜色成套+符号+大小档），新指标只登记一条；hook registerIcon 可运行时登记；网络图标包（icons.json）只是可选附加，永不在信号关键路径上等待——信号先用内置图标渲染，包到了后台再重绘，拉不到/格式错/超时 3 秒即回落内置，不写进信号 lastError。网络只作为信号源拉取本身，不作为图标与显示逻辑的依赖。分界：插件能做的只是自己图上的标记图标（宿主 7 种形状内）；超出 7 种的新形状、宿主快捷图标本身、宿主按钮面的新按钮，都必须宿主改，插件编不出来。渲染缓存：同一渲染周期内可见信号/过滤信号/图上标记只算一次，重复 getState/renderAll 不重复算。
  * V9（2026-10-25，本地-only 续做）：日K可单独筛（typeFilter 补 kline_single）；只看未看筛选（unreadOnly，角标按股+日期的已看集合反向筛，列表行前 ●未看/○已看）；状态卡信号源地址截断到 32 字（完整地址仍在 hook sourceHealth）；悬停去重（分时T·激进不再重复写两次激进）；重置后全部按钮标签同步刷新；密集分组时间用 +08:00 归一；概览最强写成“强度65”不再只写数字。样式表本身不改，用户已学的形状/颜色/代码不变。
  * V8（2026-10-25，重新设计 + 多样式体系，本地未推）：不再沿用 V3/V4 小箭头+简单标签老样子。显示系统按样式表 STYLE 注册（见下）：方向永远用红系买/青系卖 + ▲/▼/◆/■/● 形状与文字符号三重编码，不只靠颜色；强度分档改大小（弱小、强更大）；直接标签文案由 sourceLabel 承载指标代码（分时T/分时T·激进/分时T·保守/K线T/日K/K线组合），宿主价位线文案即此代码+价+数量/箭头；密集 5 分钟同价同向信号合为 1 个带 ×N 的标记，列表里仍列全部不漏；状态卡重排为概览→状态→筛选→联想→列表，行内带 ▲买/▼卖 与强度--（null 不写 0）。宿主合同内能画的才算插件实现：形状只用 host 7 种、大小 3-24、颜色白描边、价位线样式/长度/标签底色/字体/72 条上限/8 次错开均属宿主，列入宿主派活草稿，不编造。
@@ -47,7 +57,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='V10';
+const ID='wed-ind.chaoxi.tidal', VER='V18';
 const DEFAULT_SOURCE='https://raw.githubusercontent.com/G-Lcn/MAi-AG/main/A-GP/Wed-DP/Plugins/external/CXZB-MuseAi-ZT';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
@@ -60,11 +70,11 @@ const DEFAULT_SETTINGS=Object.freeze({
   sourceBaseUrl:DEFAULT_SOURCE, // V7 开箱即用：未自定义时用公开 CXZB 目录；用户自定义地址优先，永不被默认覆盖
   sourceCustom:false,      // true＝用户在插件设置里填过地址；false＝用默认地址
   refreshSec:60,           // 自动刷新间隔（秒），开盘时段内生效
-  overlayEnabled:true,     // 标记总开关（②级；①级为 Host 插件全局启停）
+  overlayEnabled:true,     // V15 固定开启：标记总开关已取消（无开关），Host 插件全局启停仍是①级
   intradayEnabled:true,    // 分时层开关（③级）
   klineEnabled:true,       // K线层开关（③级）
   directLabelEnabled:true, // 直接标签开关：批量二口径，信号旁直接写精简标签，不只悬停
-  dashedLineEnabled:true,  // 虚线开关：批量二口径，信号价位画虚线，不拉满全图
+  dashedLineEnabled:true,  // V15 固定开启：虚线开关已取消（无开关），信号价位恒画虚线
   iconPos:'',              // 潮汐图标位置持久化：''＝默认主图右侧中间，拖动后写 'x,y'（相对主图百分比）
   minStrength:0,           // 强度滑块：0=全显，拉到数值只显该值以上（批量二）
   directionFilter:'all',   // 方向筛选：all/buy/sell，与图标窗开关同套筛选
@@ -86,7 +96,8 @@ const TYPE_REGISTRY=Object.freeze({
   t_trade:       { label:'分时成交' },
   kline_signal:  { label:'K线信号' },
   kline_single:  { label:'K线单信号' },
-  kline_combo:   { label:'K线组合' }
+  kline_combo:   { label:'K线组合' },
+  t_breakout:    { label:'分时突破' }
 });
 /* V8 样式表（可扩展：新指标只要登记一条，不用重写显示层；方向=红系买/青系卖，样式=形状+符号+标签代码+大小档）
  * 宿主合同内形状只有 7 种：circle/square/diamond/triangleUp/triangleDown/arrowUp/arrowDown；大小 3-24；颜色白描边由宿主画。
@@ -98,11 +109,12 @@ const STYLE_REGISTRY=Object.freeze({
   't_trade_aggressive': { code:'分时T·激进', shapeBuy:'arrowUp',    shapeSell:'arrowDown',    symBuy:'⬆', symSell:'⬇', buy:'#ff7043', sell:'#00bfa5', base:12, text:'' },
   't_trade_conservative': { code:'分时T·保守', shapeBuy:'diamond',    shapeSell:'diamond',    symBuy:'◆', symSell:'◆', buy:'#ffb300', sell:'#4db6ac', base:9,  text:'' },
   'kline_signal':    { code:'K线T',      shapeBuy:'square',     shapeSell:'square',     symBuy:'■', symSell:'■', buy:'#ef5350', sell:'#26a69a', base:10, text:'' },
-  'kline_single':    { code:'日K',       shapeBuy:'circle',     shapeSell:'circle',     symBuy:'●', symSell:'●', buy:'#f06292', sell:'#4dd0e1', base:10, text:'' },
-  'kline_combo':     { code:'K线组合',   shapeBuy:'square',     shapeSell:'square',     symBuy:'■', symSell:'■', buy:'#ff5252', sell:'#009688', base:11, text:'组' },
+  'kline_single':    { code:'日K',       shapeBuy:'star',       shapeSell:'star',       symBuy:'★', symSell:'★', buy:'#f06292', sell:'#4dd0e1', base:11, text:'', glyph:'日' },
+  'kline_combo':     { code:'K线组合',   shapeBuy:'flag',       shapeSell:'flag',       symBuy:'⚑', symSell:'⚑', buy:'#ff5252', sell:'#009688', base:11, text:'组', glyph:'组' },
+  't_breakout':      { code:'分时突破', shapeBuy:'star',       shapeSell:'star',       symBuy:'★', symSell:'★', buy:'#ff8a2b', sell:'#00acc1', base:11, text:'', glyph:'突' },
   'default':         { code:'信号',      shapeBuy:'circle',     shapeSell:'circle',     symBuy:'●', symSell:'●', buy:'#ef5350', sell:'#26a69a', base:10, text:'' }
 });
-const ALLOWED_SHAPES=new Set(['circle','square','diamond','triangleUp','triangleDown','arrowUp','arrowDown']);
+const ALLOWED_SHAPES=new Set(['circle','square','diamond','triangleUp','triangleDown','arrowUp','arrowDown','star','flag']);
 const ICON_OVERRIDES={};
 function validIconDef(d){
   if(!d||typeof d!=='object')return false;
@@ -113,17 +125,18 @@ function validIconDef(d){
   if(d.symBuy!==undefined&&typeof d.symBuy!=='string')return false;
   if(d.symSell!==undefined&&typeof d.symSell!=='string')return false;
   if(d.text!==undefined&&typeof d.text!=='string')return false;
+  if(d.glyph!==undefined&&(typeof d.glyph!=='string'||d.glyph.length>4))return false;
   return true;
 }
 function registerIcon(key,def){
   if(typeof key!=='string'||!key.trim()||!validIconDef(def))return false;
   const k=key.trim();
-  ICON_OVERRIDES[k]={code:def.code.trim(),shapeBuy:def.shapeBuy,shapeSell:def.shapeSell,symBuy:def.symBuy||'●',symSell:def.symSell||'●',buy:def.buy,sell:def.sell,base:Number(def.base),text:def.text||''};
+  ICON_OVERRIDES[k]={code:def.code.trim(),shapeBuy:def.shapeBuy,shapeSell:def.shapeSell,symBuy:def.symBuy||'●',symSell:def.symSell||'●',buy:def.buy,sell:def.sell,base:Number(def.base),text:def.text||'',glyph:typeof def.glyph==='string'?def.glyph.slice(0,4):''};
   return true;
 }
 function iconRegistryList(){
   const out=[];
-  for(const [k,v] of Object.entries(STYLE_REGISTRY)) out.push({key:k,code:v.code,shapeBuy:v.shapeBuy,shapeSell:v.shapeSell,symBuy:v.symBuy,symSell:v.symSell,buy:v.buy,sell:v.sell,base:v.base,text:v.text,source:'builtin'});
+  for(const [k,v] of Object.entries(STYLE_REGISTRY)) out.push({key:k,code:v.code,shapeBuy:v.shapeBuy,shapeSell:v.shapeSell,symBuy:v.symBuy,symSell:v.symSell,buy:v.buy,sell:v.sell,base:v.base,text:v.text,glyph:v.glyph||'',source:'builtin'});
   for(const [k,v] of Object.entries(ICON_OVERRIDES)) out.push({key:k,...v,source:'registered'});
   return out;
 }
@@ -204,7 +217,12 @@ const state={
   iconPackFetches:0,
   iconPackLoading:false,
   renderCache:{key:'',visible:null,filtered:null,markersIntra:null,markersKline:null},
-  markerComputes:0, filterComputes:0
+  markerComputes:0, filterComputes:0,
+  // V15 折叠状态（会话内保留，不进 DEFAULT_SETTINGS、不写 workspace，重激活复位为默认）：
+  // 状态卡：watchlist/cross 默认折叠（次要段），list 默认展开（关键段），filter/main 恒展开；
+  // 开关组：switchesExpanded 默认 false（收起），只露主入口按钮。
+  collapsed:{watchlist:true, cross:true, list:false},
+  switchesExpanded:false
 };
 
 /* ---------------- 设置（ctx.workspace 持久化，合同） ---------------- */
@@ -223,13 +241,15 @@ function loadSettings(ctx){
   }
   if(typeof saved.denseGroupEnabled==='boolean')s.denseGroupEnabled=saved.denseGroupEnabled;
   if(REFRESH_CHOICES.includes(Number(saved.refreshSec)))s.refreshSec=Number(saved.refreshSec);
-  for(const k of ['overlayEnabled','intradayEnabled','klineEnabled','directLabelEnabled','dashedLineEnabled']) if(typeof saved[k]==='boolean')s[k]=saved[k];
+  for(const k of ['intradayEnabled','klineEnabled','directLabelEnabled']) if(typeof saved[k]==='boolean')s[k]=saved[k];
+  // V15 固定开启：旧 workspace 里存过的 overlay/dashed 旧值一律不读，强制 true（宿主全局启停仍在①级）。
+  s.overlayEnabled=true; s.dashedLineEnabled=true;
   if(typeof saved.iconPos==='string')s.iconPos=saved.iconPos;
   if(Number.isFinite(Number(saved.minStrength)))s.minStrength=Math.max(0,Math.min(100,Number(saved.minStrength)));
   if(['all','buy','sell'].includes(saved.directionFilter))s.directionFilter=saved.directionFilter;
   if(saved.notes&&typeof saved.notes==='object')s.notes={...saved.notes};
   if(Number.isFinite(Number(saved.seenCount)))s.seenCount=Math.max(0,Number(saved.seenCount));
-  if(['all','t_signal','t_trade','kline_signal','kline_single','kline_combo'].includes(saved.typeFilter))s.typeFilter=saved.typeFilter;
+  if(['all','t_signal','t_trade','kline_signal','kline_single','kline_combo','t_breakout'].includes(saved.typeFilter))s.typeFilter=saved.typeFilter;
   if(typeof saved.unreadOnly==='boolean')s.unreadOnly=saved.unreadOnly;
   if(['all','aggressive','conservative'].includes(saved.strategyFilter))s.strategyFilter=saved.strategyFilter;
   if(/^\d{4}-\d{2}-\d{2}$/.test(String(saved.viewDate||'')))s.viewDate=String(saved.viewDate);
@@ -284,13 +304,20 @@ function toMarker(sig,anchorMs,groupedCount){
   const style=styleOf(sig);
   const color=known?(buy?style.buy:style.sell):UNKNOWN_COLOR;
   const q=num(sig.qty??sig.quantity??sig.shares??sig.amount);
+  // V17：分时实时线一律小圆点，不压价位线。largeShape/largeGlyph 只作提醒/备注数据（hook/列表/上一条行），不发给图上标记；
+  // K线图（历史/30分/日K）仍用原大形状，属历史标注，不属分时实时线。
+  const isIntraday=String(sig.chart||'')==='intraday';
+  const largeShape=known?(buy?style.shapeBuy:style.shapeSell):'circle';
+  const stv=num(sig.strength);
+  const intraSize=(isNum(stv)&&stv>=70)?7:6;
   return {
     time:anchorMs,
     value:num(sig.price),
-    shape:known?(buy?style.shapeBuy:style.shapeSell):'circle',
+    shape:isIntraday?'circle':largeShape,
     color,
-    size:sizeForStyle(style,sig),
-    width:1, opacity:1, outline:true,
+    size:isIntraday?intraSize:sizeForStyle(style,sig),
+    width:1, opacity:isIntraday?0.9:1, outline:true,
+    largeShape, largeGlyph:style.glyph||'', largeSym:buy?style.symBuy:style.symSell,
     // V8：组合标记用 text 字段在宿主图上画“组”，密集分组用 text 画“×N”；普通标记不设 text，避免与宿主价位线双标签拥挤
     text:(style.text&&!groupedCount)?style.text:(groupedCount&&groupedCount>1)?`×${groupedCount}`:'',
     fontSize:11,
@@ -304,8 +331,9 @@ function toMarker(sig,anchorMs,groupedCount){
     styleCode:style.code, styleKey:(sig?.type==='t_trade'&&strategyOf(sig))?`${sig.type}_${strategyOf(sig)}`:String(sig?.type||'default'),
     sourceLabel:style.code,
     quantity:isNum(q)&&q>0?Math.floor(q):0,
-    dashedLine:state.settings.dashedLineEnabled?{price:num(sig.price),color}:null,
-    labelColor:color
+    dashedLine:{price:num(sig.price),color}, // V15 固定开启：虚线开关已取消，恒画虚线
+    labelColor:color,
+    glyph:isIntraday?'':(style.glyph||''), glyphColor:'#ffffff', glyphSize:Math.min(14, sizeForStyle(style,sig)+2)
   };
 }
 
@@ -337,6 +365,57 @@ function targetDate(){
   if(!state.dates.length||state.dates.includes(t))return t;
   return state.dates[state.dates.length-1];
 }
+/* V14 历史日期清单：只复用已拉取的 index，不逐日拉取、不算每日期计数。
+ * “空”只认会话内已拉取过的缓存信封：当前股 confirmed 信号数为 0 才算空；
+ * 未拉取过的日期不谎称有/无信号，只原样列出。行 ≤80 字：日期多时只取当前日前后窗口。 */
+function historyDateInfo(){
+  const dates=[...state.dates];
+  const cur=targetDate();
+  const short=d=>String(d).slice(5); // MM-DD
+  const countForSymbol=(env)=>{
+    if(!env||!Array.isArray(env.signals))return null;
+    let n=0;
+    for(const sig of env.signals){
+      if(!sig||typeof sig!=='object')continue;
+      if(sig.status&&sig.status!=='confirmed')continue;
+      if(state.symbol&&String(sig.code||'').trim()!==state.symbol)continue;
+      n++;
+    }
+    return n;
+  };
+  const knownEmpty=[], knownNonEmpty=[], unknown=[];
+  for(const d of dates){
+    const env=state.dateCache[d];
+    if(!env){ unknown.push(d); continue; }
+    const n=countForSymbol(env);
+    if(n===0)knownEmpty.push(d); else knownNonEmpty.push(d);
+  }
+  // 窗口：当前日居中，最多 9 个日期（9×8 字 ≈ 72 字，留给前缀与“空，已跳过”）
+  let windowDates=dates;
+  if(dates.length>9){
+    const ci=dates.indexOf(cur);
+    const start=ci<0?Math.max(0,dates.length-9):Math.max(0,Math.min(ci-4,dates.length-9));
+    windowDates=dates.slice(start,start+9);
+  }
+  const shown=windowDates.map(d=>d===cur?`▸${short(d)}`:short(d)).join(' · ');
+  const emptyShown=knownEmpty.filter(d=>windowDates.includes(d)).map(short).join('、');
+  const emptyOutside=knownEmpty.filter(d=>!windowDates.includes(d)).length;
+  let line=`历史日期：${shown}`;
+  if(knownEmpty.length)line+=`（${emptyShown||'窗口外'}空，已跳过${emptyOutside?`，窗口外另${emptyOutside}空日`:''}）`;
+  if(dates.length>windowDates.length)line+=` …共${dates.length}日`;
+  return {dates, current:cur, knownEmpty, knownNonEmpty, unknown, windowDates, line:line.slice(0,80)};
+}
+function isKnownEmptyDate(d){
+  const env=state.dateCache[d];
+  if(!env||!Array.isArray(env.signals))return false;
+  for(const sig of env.signals){
+    if(!sig||typeof sig!=='object')continue;
+    if(sig.status&&sig.status!=='confirmed')continue;
+    if(state.symbol&&String(sig.code||'').trim()!==state.symbol)continue;
+    return false;
+  }
+  return true;
+}
 /*
  * 拉取一轮：先 index（尽力而为，失败不阻断当日文件），再当日文件。
  * 失败语义（DESIGN）：已有旧数据 → 保留旧标记 + stale 标过期；
@@ -345,35 +424,7 @@ function targetDate(){
 async function fetchCounted(url){ state.fetchCount++; return fetchJson(url); }
 /* V10 网络图标包：与信号源同目录的 icons.json，格式 {version, icons:[{key|type, code, shapeBuy, shapeSell, symBuy, symSell, buy, sell, base, text}]}。
  * 只做插件自己的标记图标；拉不到、格式错、超时 3 秒一律回落内置，错误只记 iconPack.error，绝不写进信号 lastError、不阻塞当日信号。 */
-async function loadIconPackIfStale(base){
-  const now=Date.now();
-  if(base!==state.iconPackBase){ for(const k of Object.keys(ICON_OVERRIDES)) delete ICON_OVERRIDES[k]; state.iconPackBase=base; state.iconPackCacheAt=0; state.iconPack={status:'builtin',source:'',applied:0,skipped:0,error:''}; }
-  if(now-state.iconPackCacheAt<=300000||state.iconPackLoading)return false;
-  state.iconPackLoading=true;
-  state.iconPackCacheAt=now; state.iconPackFetches++;
-  const url=`${base}/icons.json`;
-  try{
-    let res;
-    if(typeof AbortController!=='undefined'){
-      const ctl=new AbortController(); const timer=setTimeout(()=>{ try{ctl.abort()}catch(_){} },3000);
-      try{ res=await fetch(url,{cache:'no-store',signal:ctl.signal}); }finally{ clearTimeout(timer); }
-    } else {
-      res=await Promise.race([fetch(url,{cache:'no-store'}), new Promise((_,rej)=>setTimeout(()=>rej(new Error('icon pack timeout')),3000))]);
-    }
-    if(!res||!res.ok)throw new Error(`HTTP ${res?res.status:'?'}`);
-    const j=await res.json();
-    const arr=Array.isArray(j)?j:(Array.isArray(j?.icons)?j.icons:null);
-    if(!arr)throw new Error('图标包格式不合规');
-    let applied=0, skipped=0;
-    for(const item of arr){ const key=item?.key||item?.type; if(registerIcon(key,item))applied++; else skipped++; }
-    state.iconPack={status:applied?'network':'builtin',source:url,applied,skipped,error:applied?'':(skipped?'图标包条目全部不合规，已回落内置':'')};
-    if(applied&&!state.disposed)renderAll();
-    return applied>0;
-  }catch(e){
-    state.iconPack={status:'fallback',source:url,applied:0,skipped:0,error:String(e?.message||e||'拉取失败')};
-    return false;
-  }finally{ state.iconPackLoading=false; }
-}
+async function loadIconPackIfStale(base){ /* V13 自我否定：网络图标包已砍——内置图标库 + registerIcon 已覆盖新图标，真实信号目录本无 icons.json，包只带来额外拉取与超时面；不再拉取，永不阻塞信号 */ return false; }
 async function refresh(reason){
   if(state.disposed||state.inflight)return;
   const base=baseUrl();
@@ -385,8 +436,6 @@ async function refresh(reason){
     if(now-state.indexCacheAt>300000){
       try{ const idx=await fetchCounted(`${base}/index.json`); const ds=validIndex(idx); if(ds.length){ state.dates=ds; state.indexCacheAt=now; } }catch(_){ /* 索引失败不阻断 */ }
     } else state.cacheHits++;
-    // V10调整：图标包永不在信号关键路径上等待——先用内置图标走信号，包在后台加载，到了再重绘
-    void loadIconPackIfStale(base).catch(()=>{});
     const date=targetDate();
     const cached=state.dateCache[date];
     if(cached&&!(date===todayStr()&&isTradingNow())){
@@ -457,7 +506,7 @@ function syncView(){
 /* V10 内部调用效率：渲染缓存键 = 日期+数据时间+股+周期+全部筛选开关+已看数；键不变时可见/过滤/标记直接复用，不重复算、不往返宿主 */
 function renderKey(){
   const s=state.settings;
-  const iconKey=Object.entries(ICON_OVERRIDES).map(([k,v])=>`${k}:${v.code}:${v.buy}:${v.sell}:${v.base}`).join(';');
+  const iconKey=Object.entries(ICON_OVERRIDES).map(([k,v])=>`${k}:${v.code}:${v.buy}:${v.sell}:${v.base}:${v.glyph||''}`).join(';');
   return [state.envelopeDate,state.generatedAt,state.symbol,state.period,s.overlayEnabled,s.intradayEnabled,s.klineEnabled,s.directLabelEnabled,s.dashedLineEnabled,s.minStrength,s.directionFilter,s.typeFilter,s.strategyFilter,s.denseGroupEnabled,s.unreadOnly,(state.settings.seenIds[seenKey()]||[]).length,iconKey].join('|');
 }
 /* 只收 confirmed；按 id 去重；只显示当前股票（code 与宿主 symbol 归一比较） */
@@ -721,6 +770,48 @@ function summaryLine(){
     text:`${state.symbol||'--'} · ${state.envelopeDate||targetDate()}${viewMode==='history'?'（查看历史）':'（跟随最新）'} · 共${all.length}条 买${buy} 卖${sell} · 未看${unreadCount()}条 · 最新 ${latestText} · 最强 ${strongestText}`};
 }
 
+function previousSignalInfo(){
+  // V17 上一条信号提醒：不压在分时实时价位上，大形状只出现在这里（提醒/备注用途）。
+  // 取过滤后倒序第 2 条；只有 1 条或无信号时返回 null，状态卡不写空行。
+  const rows=filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time));
+  if(rows.length<2)return null;
+  const sig=rows[1], style=styleOf(sig), buy=sideOf(sig)==='buy';
+  const info={id:String(sig.id||''), time:sig.time||'', price:num(sig.price), side:sideOf(sig), code:style.code,
+    chart:String(sig.chart||''), period:String(sig.period||''), type:String(sig.type||''),
+    largeShape:buy?style.shapeBuy:style.shapeSell, glyph:style.glyph||'', sym:buy?style.symBuy:style.symSell,
+    note:noteOf(sig)};
+  const sideArrow=buy?'▲':'▼';
+  const extraSym=(info.sym&&info.sym!==sideArrow)?` ${info.sym}`:'';
+  info.line=`上一条提醒：${String(sig.time||'').slice(11,16)} ${buy?'▲买':'▼卖'} ${sig.price} ${style.code}${extraSym}${style.glyph?`（${style.glyph}）`:''}`.slice(0,80);
+  return info;
+}
+function reminderSignals(){
+  // V17 大形状提醒清单：只列带 glyph 的大形状信号（分时突破/日K/K线组合），图上分时线不画大形状，
+  // 这些信号的提醒形态只出现在这里、列表符号与上一条行里，不压价位。
+  return filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time)).filter(sig=>{
+    const style=styleOf(sig); return !!style.glyph;
+  }).slice(0,10).map(sig=>{ const style=styleOf(sig), buy=sideOf(sig)==='buy';
+    return {id:String(sig.id||''), time:sig.time||'', price:num(sig.price), side:sideOf(sig), code:style.code,
+      chart:String(sig.chart||''), period:String(sig.period||''), type:String(sig.type||''),
+      largeShape:buy?style.shapeBuy:style.shapeSell, glyph:style.glyph||'', sym:buy?style.symBuy:style.symSell}; });
+}
+function periodOverview(){
+  // V16 三周期总览：用当日已确认信号（当前股，不经筛选，这样总览不随筛选变脸）按周期分组；
+  // 分时=intraday，30分=period 30m，日K=period day；每组给总数/买/卖/最新一条，行 ≤80 字。
+  const all=visibleSignals();
+  const groups={intraday:{total:0,buy:0,sell:0,latest:null},kline30:{total:0,buy:0,sell:0,latest:null},day:{total:0,buy:0,sell:0,latest:null}};
+  for(const sig of all){
+    const g=sig.chart==='intraday'?groups.intraday:(String(sig.period||'')==='30m'?groups.kline30:(String(sig.period||'')==='day'?groups.day:null));
+    if(!g)continue;
+    g.total++; if(sideOf(sig)==='buy')g.buy++; else g.sell++;
+    const ms=msOf(sig.time);
+    if(isNum(ms)&&(!g.latest||ms>msOf(g.latest.time)))g.latest=sig;
+  }
+  const fmt=(g,label)=>{ if(!g.total)return `${label} 0条`; const l=g.latest; return `${label} ${g.total}条（买${g.buy}卖${g.sell}·最新${sideOf(l)==='buy'?'▲买':'▼卖'} ${l.price}）`; };
+  const line=`三周期：${fmt(groups.intraday,'分时')} ｜ ${fmt(groups.kline30,'30分')} ｜ ${fmt(groups.day,'日K')}`;
+  return {intraday:groups.intraday,kline30:groups.kline30,day:groups.day,line:line.slice(0,80)};
+}
+
 /* ---------------- 渲染 ---------------- */
 function renderMarkers(){
   for(const context of [CTX_INTRA,CTX_KLINE]){
@@ -735,40 +826,70 @@ function statusSegments(){
   const segs=[];
   // V8 状态卡排版（插件能控的文案与分组）：概览一行 → 状态一行 → 分隔 → 筛选/自选/联想 → 分隔 → 列表（≤15 条）→ 尾部提示；每行 ≤80 字，方向用 ▲买/▼卖 + 文字，不只靠颜色
   const sum=summaryLine();
-  segs.push({text:`📊 概览 ${sum.symbol||'--'} · ${sum.date}${sum.viewMode==='history'?'（查看历史）':'（跟随最新）'} · 共${sum.total}条 买${sum.buy} 卖${sum.sell} · 未看${sum.unread}条`});
+  // V15 版本号显示：首行即写版本，不单独成行、不占额外行数；hook 里原有 version 字段不变。
+  // V18：宿主把状态卡渲染成单行横条（nowrap），后段在 276px 分析面板里横向溢出看不到，故首段必须是“一屏能看完”的版本+折叠摘要；完整概览（买卖/日期/跟随）仍在第二段，数据不丢，只是首段不再靠后段。
+  segs.push({text:`📊 潮汐 ${VER} · ${sum.symbol||'--'} · 共${sum.total}条 · 开关${state.switchesExpanded?'已展开':'已折叠'}`});
+  segs.push({text:`${sum.symbol||'--'} · ${sum.date}${sum.viewMode==='history'?'（查看历史）':'（跟随最新）'} · 买${sum.buy} 卖${sum.sell} · 未看${sum.unread}条`});
   segs.push({text:`最新 ${sum.latest} · 最强 ${sum.strongest}`});
-  segs.push({text:`${statusText()}${state.generatedAt?` · 数据 ${shTimeStr(Date.parse(state.generatedAt))}`:''}${state.stale?' · 已过期':''}`});
+  const prev=previousSignalInfo();
+  if(prev)segs.push({text:prev.line});
+  segs.push({text:periodOverview().line});
+  // V16 自我否定：状态 ok 且无筛选时，状态行与筛选行都是“一切正常”的重复话，并入总览，不再单独成行；
+  // 有异常（断源/空/过期）或有筛选时仍单独成行，因为那时是需要行动的信息。
+  const fb0=filterBreakdown();
+  const showStatusRow=statusKind()!=='ok'||state.stale||fb0.filteredOut>0;
+  if(showStatusRow)segs.push({text:`${statusText()}${state.generatedAt?` · 数据 ${shTimeStr(Date.parse(state.generatedAt))}`:''}${state.stale?' · 已过期':''}`});
   const urlShort=(()=>{ const u=baseUrl(); return u.length>32?u.slice(0,32)+'…':u; })();
-  segs.push({text:`图标：内置 ${Object.keys(STYLE_REGISTRY).length} 套 · 网络包 ${state.iconPack.status==='network'?`已用 ${state.iconPack.applied} 套`:state.iconPack.status==='fallback'?'拉取失败回落内置':'未用'} · 新图标登记不用改宿主`});
-  segs.push({text:`信号源：${s.sourceCustom?'自定义':'默认公开'} · ${urlShort}${state.failCount>0?` · 连续失败 ${state.failCount} 次`:''} · 拉取 ${state.fetchCount} 次 / 缓存 ${state.cacheHits} 次`});
-  if(!s.overlayEnabled)segs.push({text:'标记总开关 关'});
+  segs.push({text:`信号源：${s.sourceCustom?'自定义':'默认公开'} · ${urlShort}${state.failCount>0?` · 连续失败 ${state.failCount} 次`:''}`});
   const all=visibleSignals(), rows=filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time));
   const mc=markerCounts();
   const fb=filterBreakdown();
-  segs.push({text:`筛选：剩余 ${fb.remaining} 条 · 筛掉 ${fb.filteredOut} 条（强度 ${fb.byStrength} · 方向 ${fb.byDirection} · 类型 ${fb.byType} · 策略 ${fb.byStrategy}${s.unreadOnly?` · 未看 ${fb.byUnread}`:''}） · 图上标记 分时 ${mc.intra} + K线 ${mc.kline}${mc.merged?`（合并 ${mc.merged} 条，含密集分组 ${mc.grouped} 组）`:''}`});
+  // V11 筛选：筛掉为 0 时拆解全是 0、零信息，压短（原行 83 字超 80 字上限）；筛掉 >0 时保留拆解（此时细节有用）
+  if(fb.filteredOut===0){ /* V16：无筛选时图上计数已在三周期总览与概览里，不再重复成行 */ }
+  else { const parts=[]; if(fb.byStrength)parts.push(`强度 ${fb.byStrength}`); if(fb.byDirection)parts.push(`方向 ${fb.byDirection}`); if(fb.byType)parts.push(`类型 ${fb.byType}`); if(fb.byStrategy)parts.push(`策略 ${fb.byStrategy}`); if(s.unreadOnly&&fb.byUnread)parts.push(`未看 ${fb.byUnread}`); segs.push({text:`筛选：剩余 ${fb.remaining} 条 · 筛掉 ${fb.filteredOut} 条（${parts.join(' · ')||'—'}） · 图上 分时 ${mc.intra} + K线 ${mc.kline}${mc.merged?`（合并 ${mc.merged} 条，含密集分组 ${mc.grouped} 组）`:''}`}); }
   const wl=watchlistSummary();
-  if(wl.length)segs.push({text:`自选信号：${wl.map(w=>`${w.code} ${w.total}条（买${w.buy}卖${w.sell}·未看${w.unread}）`).join(' / ')}`});
+  // V15 折叠：自选（次要段，默认折叠）——折叠时只露 1 行摘要，不丢任何股的计数，展开才列明细。
+  if(wl.length){
+    if(state.collapsed.watchlist)segs.push({text:`▸ 自选信号（已折叠，共 ${wl.length} 股）`});
+    else segs.push({text:`自选信号：${wl.map(w=>`${w.code} ${w.total}条（买${w.buy}卖${w.sell}·未看${w.unread}）`).join(' / ')}`});
+  }
   segs.push({text:`─ ─ ─`});
   const cp=crossPeriod();
-  if(state.envelope&&all.length){
-    const cpText=Object.entries(cp.counts).map(([k,v])=>`${k} ${v}条`).join(' / ');
-    segs.push({text:`联想（同股同日）：${cpText}`});
-    for(const l of cp.linked.slice(0,3)){
-      segs.push({text:`联想 ${String(l.time||'').slice(11,16)} ${l.side==='buy'?'▲买':'▼卖'} ${l.price} ${l.chart}/${l.period} ${l.source||l.type}`.slice(0,80)});
+  // V15 折叠：联想+历史（次要段，默认折叠）——折叠时合为 1 行摘要，省 1 行；联想计数与历史日期数据仍在 hook 里，展开才列。
+  if(state.collapsed.cross){
+    if(state.envelope&&all.length)segs.push({text:`▸ 联想+历史日期（已折叠）`});
+  } else {
+    if(state.envelope&&all.length){
+      const cpText=Object.entries(cp.counts).map(([k,v])=>`${k} ${v}条`).join(' / ');
+      segs.push({text:`联想（同股同日）：${cpText}`});
+      // V13 自我否定：联想明细行与信号列表重复（同股同日信号列表里已有），只留计数行，省 3 行
     }
+    // V14：历史日期清单 1 行（复用 index，不逐日拉取、不算计数）；无 index 时不写空行
+    if(state.dates.length)segs.push({text:historyDateInfo().line});
   }
   const foc=focusInfo();
+  // V15 折叠：信号列表（关键段，默认展开）——折叠时只露 1 行摘要（共 N 条、未看 M 条），标记、角标、筛选计数全不受影响；已定位行随列表段折叠，focusIndex 本身保留。
+  if(state.collapsed.list){
+    segs.push({text:`▸ 信号列表（已折叠，共 ${rows.length} 条，未看 ${unreadCount()} 条）`});
+    if(statusKind().startsWith('error'))segs.push({text:'提示：点“潮汐信号 刷新”重试，或点“恢复默认信号源”回默认公开地址'});
+    return segs;
+  }
   if(foc)segs.push({text:`已定位：${String(foc.time||'').slice(11,16)} ${foc.side==='buy'?'▲买':'▼卖'} ${foc.price} ${foc.chart}/${foc.period} ${foc.label}（图上滚动需宿主消费 focus 字段）`});
   segs.push({text:`─ 信号列表（倒序） ─`});
   const seenRow=new Set(state.settings.seenIds[seenKey()]||[]);
-  for(const sig of rows.slice(0,15)){
+  for(let li=0; li<rows.slice(0,15).length; li++){
+    const sig=rows.slice(0,15)[li];
     const ms=msOf(sig.time);
     const pp=isNum(ms)?shParts(ms):{hour:'--',minute:'--'};
     const style=styleOf(sig);
     const note=noteOf(sig) ? ` 备注：${noteOf(sig)}` : '';
     const strat=strategyOf(sig)?` ${strategyOf(sig)==='aggressive'?'激进':'保守'}`:'';
     const seenMark=seenRow.has(sigKey(sig))?'○':'●';
-    segs.push({text:`${seenMark} ${pp.hour}:${pp.minute} ${sideOf(sig)==='buy'?'▲买':'▼卖'} ${sig.price} ${style.code} 强度${strengthText(sig)}${strat}${note}`.slice(0,80)});
+    // V11 胜者：强度条（正强度才有条，0/null 无条）+ 最新一条 ★；行仍 ≤80 字
+    const stv=num(sig.strength);
+    const bar=(isNum(stv)&&stv>0)?' '+('▓'.repeat(stv>=70?4:stv>=50?3:stv>=30?2:1)):'';
+    const star=li===0?'★':'';
+    segs.push({text:`${seenMark} ${star}${pp.hour}:${pp.minute} ${sideOf(sig)==='buy'?'▲买':'▼卖'} ${sig.price} ${style.code} 强度${strengthText(sig)}${bar}${strat}${note}`.slice(0,80)});
   }
   if(state.envelope&&rows.length===0)segs.push({text:'当日无信号（筛选后）：放宽筛选或换日期再看'});
   else if(rows.length>15)segs.push({text:`共 ${rows.length} 条，倒序显示前 15 条，导出可看全部`});
@@ -798,7 +919,7 @@ function tidalState(){
   const s=state.settings;
   const all=visibleSignals(), rows=filteredSignals();
   const date=state.envelopeDate||targetDate();
-  const switches={overlayEnabled:s.overlayEnabled,intradayEnabled:s.intradayEnabled,klineEnabled:s.klineEnabled,directLabelEnabled:s.directLabelEnabled,dashedLineEnabled:s.dashedLineEnabled};
+  const switches={overlayEnabled:true,intradayEnabled:s.intradayEnabled,klineEnabled:s.klineEnabled,directLabelEnabled:s.directLabelEnabled,dashedLineEnabled:true}; // V15：已取消的两个开关恒 true 兼容宿主
   const settings={...switches,
     minStrength:s.minStrength, strengthThreshold:s.minStrength,
     direction:s.directionFilter, directionFilter:s.directionFilter,
@@ -819,13 +940,18 @@ function tidalState(){
     filtered:rows.length, remainingCount:rows.length, filteredCount:all.length-rows.length,
     counts:{remaining:rows.length, filtered:all.length-rows.length},
     settings, switches, filters:{minStrength:s.minStrength,directionFilter:s.directionFilter,typeFilter:s.typeFilter},
-    signalTypes:[{value:'t_signal',label:'分时信号'},{value:'t_trade',label:'分时成交'},{value:'kline_signal',label:'K线信号'},{value:'kline_combo',label:'K线组合'}],
+    signalTypes:[{value:'t_signal',label:'分时信号'},{value:'t_trade',label:'分时成交'},{value:'t_breakout',label:'分时突破'},{value:'kline_signal',label:'K线信号'},{value:'kline_single',label:'日K'},{value:'kline_combo',label:'K线组合'}],
     positions:pos?{intraday:pos,kline:pos}:{},
     iconPositions:pos?{intraday:pos,kline:pos}:{},
     iconPos:s.iconPos, viewDate:s.viewDate||'',
     lastError:state.lastError||'', errorKind:errorKind(), stale:!!state.stale,
     crossPeriod:crossPeriod(), focus:focusInfo(),
-    summary:summaryLine(), filterBreakdown:filterBreakdown(), watchlist:watchlistSummary(),
+    previousSignal:previousSignalInfo(), reminderSignals:reminderSignals(),
+    historyDates:historyDateInfo(),
+    versionLabel:`潮汐 ${VER}`,
+    sections:{watchlistCollapsed:!!state.collapsed.watchlist, crossCollapsed:!!state.collapsed.cross, listCollapsed:!!state.collapsed.list, filterCollapsed:false, mainCollapsed:false},
+    switchesExpanded:!!state.switchesExpanded,
+    summary:summaryLine(), periodOverview:periodOverview(), filterBreakdown:filterBreakdown(), watchlist:watchlistSummary(),
     status:{kind:statusKind(), text:statusText()},
     sourceHealth:{url:baseUrl(), custom:s.sourceCustom, isDefault:!s.sourceCustom, lastOkAt:state.fetchedAt||0, failCount:state.failCount||0, errorKind:errorKind(), error:state.lastError||''},
     viewMode:s.viewDate?'history':'follow',
@@ -857,12 +983,13 @@ function tidalSetIconPosRaw(a,b){
 function tidalSetOption(key,value){
   if(key==='denseGroup'||key==='denseGroupEnabled'){ state.settings.denseGroupEnabled=!!value; saveSettings(); renderAll(); return true; }
   if(key==='unreadOnly'||key==='unreadOnlyFilter'){ state.settings.unreadOnly=!!value; saveSettings(); renderAll(); return true; }
-  if(['overlayEnabled','intradayEnabled','klineEnabled','directLabelEnabled','dashedLineEnabled'].includes(key)){
+  if(key==='overlayEnabled'||key==='dashedLineEnabled'){ state.settings[key]=true; saveSettings(); renderAll(); return true; } // V15 已取消开关：写什么都恒开，宿主回读恒 true
+  if(['intradayEnabled','klineEnabled','directLabelEnabled'].includes(key)){
     state.settings[key]=!!value; saveSettings(); renderAll(); return true;
   }
   if(key==='minStrength'){ const v=Math.max(0,Math.min(100,Number(value))); if(!Number.isFinite(v))return false; state.settings.minStrength=v; saveSettings(); renderAll(); return true; }
   if(key==='direction'||key==='directionFilter'){ if(!['all','buy','sell'].includes(value))return false; state.settings.directionFilter=value; saveSettings(); renderAll(); return true; }
-  if(key==='signalType'||key==='typeFilter'||key==='signalTypeFilter'){ if(!['all','t_signal','t_trade','kline_signal','kline_single','kline_combo'].includes(value))return false; state.settings.typeFilter=value; saveSettings(); renderAll(); return true; }
+  if(key==='signalType'||key==='typeFilter'||key==='signalTypeFilter'){ if(!['all','t_signal','t_trade','kline_signal','kline_single','kline_combo','t_breakout'].includes(value))return false; state.settings.typeFilter=value; saveSettings(); renderAll(); return true; }
   if(key==='strategy'||key==='strategyFilter'){ if(!['all','aggressive','conservative'].includes(value))return false; state.settings.strategyFilter=value; saveSettings(); renderAll(); return true; }
   if(key==='sourceUrl'||key==='sourceBaseUrl'||key==='signalSourceUrl'){ if(typeof value!=='string'||!value.trim())return false; state.settings.sourceBaseUrl=value.trim(); state.settings.sourceCustom=true; saveSettings(); state.dateCache={}; state.indexCacheAt=0; state.iconPackCacheAt=0; void refresh('source-change'); return true; }
   return false;
@@ -881,13 +1008,14 @@ const tidalHook={
   onChange:(cb)=>{ if(typeof cb!=='function')return ()=>{}; tidalListeners.add(cb); return ()=>tidalListeners.delete(cb); },
   subscribe:(cb)=>{ if(typeof cb!=='function')return ()=>{}; tidalListeners.add(cb); return ()=>tidalListeners.delete(cb); },
   setSwitch:(key,value)=>{
-    if(!['overlayEnabled','intradayEnabled','klineEnabled','directLabelEnabled','dashedLineEnabled'].includes(key))return false;
+    if(key==='overlayEnabled'||key==='dashedLineEnabled'){ state.settings[key]=true; saveSettings(); renderAll(); return true; } // V15 已取消开关：恒开
+    if(!['intradayEnabled','klineEnabled','directLabelEnabled'].includes(key))return false;
     state.settings[key]=!!value; saveSettings(); renderAll(); return true;
   },
   setFilter:(key,value)=>{
     if(key==='minStrength'){ const v=Math.max(0,Math.min(100,Number(value))); if(!Number.isFinite(v))return false; state.settings.minStrength=v; }
     else if(key==='directionFilter'||key==='direction'){ if(!['all','buy','sell'].includes(value))return false; state.settings.directionFilter=value; }
-    else if(key==='typeFilter'||key==='signalType'){ if(!['all','t_signal','t_trade','kline_signal','kline_single','kline_combo'].includes(value))return false; state.settings.typeFilter=value; }
+    else if(key==='typeFilter'||key==='signalType'){ if(!['all','t_signal','t_trade','kline_signal','kline_single','kline_combo','t_breakout'].includes(value))return false; state.settings.typeFilter=value; }
     else return false;
     saveSettings(); renderAll(); return true;
   },
@@ -934,6 +1062,22 @@ const tidalHook={
   focusNext:()=>tidalFocusStep(1),
   focusPrev:()=>tidalFocusStep(-1),
   exportCsv:()=>exportCsv(),
+  toggleSection:(name)=>{
+    if(name==='secondary'){ const v=!(state.collapsed.watchlist&&state.collapsed.cross); state.collapsed.watchlist=v; state.collapsed.cross=v; renderAll(); return {...state.collapsed}; }
+    if(name==='watchlist'||name==='cross'||name==='list'){ state.collapsed[name]=!state.collapsed[name]; renderAll(); return {...state.collapsed}; }
+    return null;
+  },
+  setSectionCollapsed:(name,value)=>{
+    if(name==='secondary'){ state.collapsed.watchlist=!!value; state.collapsed.cross=!!value; renderAll(); return {...state.collapsed}; }
+    if(name==='watchlist'||name==='cross'||name==='list'){ state.collapsed[name]=!!value; renderAll(); return {...state.collapsed}; }
+    return null;
+  },
+  expandAllSections:()=>{ state.collapsed={watchlist:false,cross:false,list:false}; renderAll(); return {...state.collapsed}; },
+  collapseSecondarySections:()=>{ state.collapsed.watchlist=true; state.collapsed.cross=true; renderAll(); return {...state.collapsed}; },
+  getSections:()=>({...state.collapsed}),
+  toggleSwitches:()=>{ setSwitchesExpanded(!state.switchesExpanded); return state.switchesExpanded; },
+  setSwitchesExpanded:(v)=>{ setSwitchesExpanded(!!v); return state.switchesExpanded; },
+  getSwitchesExpanded:()=>!!state.switchesExpanded,
   resetFilters:()=>{ state.settings.minStrength=0; state.settings.directionFilter='all'; state.settings.typeFilter='all'; state.settings.strategyFilter='all'; state.settings.unreadOnly=false; saveSettings(); renderAll(); return true; },
   resetSettings:()=>{ const keep={sourceBaseUrl:state.settings.sourceBaseUrl, sourceCustom:state.settings.sourceCustom, notes:state.settings.notes, iconPos:state.settings.iconPos}; state.settings={...DEFAULT_SETTINGS, ...keep}; saveSettings(); renderAll(); return true; }
 };
@@ -943,20 +1087,77 @@ root.__AGP_TIDAL__=tidalHook;
 function mountUi(spec){
   try{ return state.ctx?.ui?.mount?.(spec)||null; }catch(_){ return null; }
 }
+// V15 折叠控制（会话内，不写 workspace）：状态卡段与开关组共用“只改 UI 呈现、不改信号/筛选/角标”原则。
+function setSwitchesExpanded(v){
+  state.switchesExpanded=!!v;
+  if(state.switchesExpanded){
+    mountSwitchButtons();
+  } else {
+    for(const k of SWITCH_BUTTON_KEYS){ const h=state.uiHandles[k]; if(h){ try{ h.remove?.(); }catch(_){} delete state.uiHandles[k]; } }
+  }
+  refreshToggleLabels();
+  renderStatus();
+}
+const SWITCH_BUTTON_KEYS=['intra','kline','strength','direction','type','strategy','dense','unread']; // V15：标记总开关已取消，不在开关组里
+function mountSwitchButtons(){
+  const defs=[
+    ['intra','分时标记：开',44,()=>{ state.settings.intradayEnabled=!state.settings.intradayEnabled; saveSettings(); renderAll(); }],
+    ['kline','K线标记：开',45,()=>{ state.settings.klineEnabled=!state.settings.klineEnabled; saveSettings(); renderAll(); }],
+    ['strength','强度筛选：0 全显',50,()=>{
+      const steps=[0,50,65,80,100];
+      const i=steps.indexOf(state.settings.minStrength);
+      state.settings.minStrength=steps[(i+1)%steps.length];
+      saveSettings(); renderAll();
+      const h=state.uiHandles.strength; if(h)try{h.update?.({label:`强度筛选：${state.settings.minStrength===0?'0 全显':`≥${state.settings.minStrength}`}`})}catch(_){}
+    }],
+    ['direction','方向筛选：全部',51,()=>{
+      const steps=['all','buy','sell'];
+      const i=steps.indexOf(state.settings.directionFilter);
+      state.settings.directionFilter=steps[(i+1)%steps.length];
+      saveSettings(); renderAll();
+      const h=state.uiHandles.direction; if(h)try{h.update?.({label:`方向筛选：${state.settings.directionFilter==='all'?'全部':state.settings.directionFilter==='buy'?'只看买':'只看卖'}`})}catch(_){}
+    }],
+    ['type','信号类型：全部',54,()=>{
+      const steps=['all','t_signal','t_trade','kline_signal','kline_single','kline_combo','t_breakout'];
+      const labels={all:'全部',t_signal:'分时信号',t_trade:'分时成交',kline_signal:'K线信号',kline_single:'日K',kline_combo:'K线组合'};
+      const i=steps.indexOf(state.settings.typeFilter);
+      state.settings.typeFilter=steps[(i+1)%steps.length];
+      saveSettings(); renderAll();
+      const h=state.uiHandles.type; if(h)try{h.update?.({label:`信号类型：${labels[state.settings.typeFilter]}`})}catch(_){}
+    }],
+    ['strategy','策略筛选：全部',61,()=>{
+      const steps=['all','aggressive','conservative'];
+      const labels={all:'全部',aggressive:'只看激进',conservative:'只看保守'};
+      const i=steps.indexOf(state.settings.strategyFilter);
+      state.settings.strategyFilter=steps[(i+1)%steps.length];
+      saveSettings(); renderAll();
+      const h=state.uiHandles.strategy; if(h)try{h.update?.({label:`策略筛选：${labels[state.settings.strategyFilter]}`})}catch(_){}
+    }],
+    ['dense','密集分组：开',62,()=>{ state.settings.denseGroupEnabled=!state.settings.denseGroupEnabled; saveSettings(); renderAll(); const h=state.uiHandles.dense; if(h)try{h.update?.({label:`密集分组：${state.settings.denseGroupEnabled?'开':'关'}`})}catch(_){} }],
+    ['unread','只看未看：关',64,()=>{ state.settings.unreadOnly=!state.settings.unreadOnly; saveSettings(); renderAll(); const h=state.uiHandles.unread; if(h)try{h.update?.({label:`只看未看：${state.settings.unreadOnly?'开':'关'}`})}catch(_){} }],
+  ];
+  for(const [key,label,order,onAction] of defs){
+    const old=state.uiHandles[key]; if(old){ try{ old.remove?.(); }catch(_){} }
+    const h=mountUi({slot:'settings.plugin',kind:'button',label,order,onAction});
+    if(h)state.uiHandles[key]=h;
+  }
+}
 function refreshToggleLabels(){
   const s=state.settings;
   const map={
-    toggle:`标记总开关：${s.overlayEnabled?'开':'关'}`,
     intra:`分时标记：${s.intradayEnabled?'开':'关'}`,
     kline:`K线标记：${s.klineEnabled?'开':'关'}`,
-    interval:`刷新间隔：${s.refreshSec}秒`,
     date:`信号日期：${targetDate()}`,
     strength:`强度筛选：${s.minStrength===0?'0 全显':`≥${s.minStrength}`}`,
     direction:`方向筛选：${s.directionFilter==='all'?'全部':s.directionFilter==='buy'?'只看买':'只看卖'}`,
     type:`信号类型：${{all:'全部',t_signal:'分时信号',t_trade:'分时成交',kline_signal:'K线信号',kline_single:'日K',kline_combo:'K线组合'}[s.typeFilter]||'全部'}`,
     strategy:`策略筛选：${s.strategyFilter==='all'?'全部':s.strategyFilter==='aggressive'?'只看激进':'只看保守'}`,
     dense:`密集分组：${s.denseGroupEnabled?'开':'关'}`,
-    unread:`只看未看：${s.unreadOnly?'开':'关'}`
+    unread:`只看未看：${s.unreadOnly?'开':'关'}`,
+    secondary:`次要段：${(state.collapsed.watchlist&&state.collapsed.cross)?'已折叠':'已展开'}`,
+    listToggle:`信号列表：${state.collapsed.list?'已折叠':'已展开'}`,
+    switches:`开关组：${state.switchesExpanded?'已展开':'已折叠'}`,
+    versionTop:`潮汐指标 ${VER} · 开关组：${state.switchesExpanded?'已展开':'已折叠'}`
   };
   for(const k of Object.keys(map)){
     const h=state.uiHandles[k];
@@ -979,65 +1180,29 @@ function setupUi(){
       saveSettings(); state.dateCache={}; state.indexCacheAt=0; state.iconPackCacheAt=0; void refresh('manual');
     }
   });
+  // V18：设置面顶部入口——版本号 + 开关折叠状态同在一个按钮里，点它即展开/收起开关组；order 39 在原有 40+ 按钮之前，打开插件独立设置对话框第一眼就能看到。
+  add('versionTop','settings.plugin',`潮汐指标 ${VER} · 开关组：已折叠`,39,()=>{ setSwitchesExpanded(!state.switchesExpanded); });
   add('sourceDefault','settings.plugin','恢复默认信号源',40,()=>{
     state.settings.sourceBaseUrl=DEFAULT_SOURCE; state.settings.sourceCustom=false;
     saveSettings(); state.dateCache={}; state.indexCacheAt=0; state.iconPackCacheAt=0; void refresh('manual');
   });
   add('refresh','settings.plugin','潮汐信号 刷新',42,()=>{ void refresh('manual'); });
-  add('toggle','settings.plugin','标记总开关：开',43,()=>{ state.settings.overlayEnabled=!state.settings.overlayEnabled; saveSettings(); renderAll(); });
-  add('intra','settings.plugin','分时标记：开',44,()=>{ state.settings.intradayEnabled=!state.settings.intradayEnabled; saveSettings(); renderAll(); });
-  add('kline','settings.plugin','K线标记：开',45,()=>{ state.settings.klineEnabled=!state.settings.klineEnabled; saveSettings(); renderAll(); });
-  add('interval','settings.plugin','刷新间隔：60秒',46,()=>{
-    const i=REFRESH_CHOICES.indexOf(state.settings.refreshSec);
-    state.settings.refreshSec=REFRESH_CHOICES[(i+1)%REFRESH_CHOICES.length];
-    saveSettings(); startTimer(); refreshToggleLabels();
-  });
+  // V15 开关组默认收起：只露主入口；开关按钮由 setSwitchesExpanded(true) 按需挂载，收起时只 remove 句柄、不改设置。
+  add('switches','settings.plugin','开关组：已折叠',43,()=>{ setSwitchesExpanded(!state.switchesExpanded); });
+  // V15 状态卡折叠入口（恒显示，否则折叠后无处展开）：次要段合一 + 信号列表各 1 个按钮，不搞每段 1 个按钮。
+  add('secondary','settings.plugin','次要段：已折叠',63,()=>{ const v=!(state.collapsed.watchlist&&state.collapsed.cross); state.collapsed.watchlist=v; state.collapsed.cross=v; renderAll(); });
+  add('listToggle','settings.plugin','信号列表：已展开',65,()=>{ state.collapsed.list=!state.collapsed.list; renderAll(); });
+
   add('datePrev','settings.plugin','信号日期 上一日',47,()=>stepDate(-1));
   add('date','settings.plugin','信号日期：今日',48,()=>{ state.settings.viewDate=''; saveSettings(); void refresh('manual'); });
   add('dateNext','settings.plugin','信号日期 下一日',49,()=>stepDate(1));
-  add('strength','settings.plugin','强度筛选：0 全显',50,()=>{
-    const steps=[0,50,65,80,100];
-    const i=steps.indexOf(state.settings.minStrength);
-    state.settings.minStrength=steps[(i+1)%steps.length];
-    saveSettings(); renderAll();
-    const h=state.uiHandles.strength; if(h)try{h.update?.({label:`强度筛选：${state.settings.minStrength===0?'0 全显':`≥${state.settings.minStrength}`}`})}catch(_){}
-  });
-  add('direction','settings.plugin','方向筛选：全部',51,()=>{
-    const steps=['all','buy','sell'];
-    const i=steps.indexOf(state.settings.directionFilter);
-    state.settings.directionFilter=steps[(i+1)%steps.length];
-    saveSettings(); renderAll();
-    const h=state.uiHandles.direction; if(h)try{h.update?.({label:`方向筛选：${state.settings.directionFilter==='all'?'全部':state.settings.directionFilter==='buy'?'只看买':'只看卖'}`})}catch(_){}
-  });
   add('seen','settings.plugin','已看清零',52,()=>{ markAllSeen(); });
-  add('dense','settings.plugin','密集分组：开',62,()=>{ state.settings.denseGroupEnabled=!state.settings.denseGroupEnabled; saveSettings(); renderAll(); const h=state.uiHandles.dense; if(h)try{h.update?.({label:`密集分组：${state.settings.denseGroupEnabled?'开':'关'}`})}catch(_){} });
-  add('sourcePreset','settings.plugin','信号源：默认/自定义切换',63,()=>{
-    if(state.settings.sourceCustom){ state.settings.sourceBaseUrl=DEFAULT_SOURCE; state.settings.sourceCustom=false; }
-    else { /* 已是默认时不编造自定义地址，提示用户用“潮汐信号源 URL”填 */ return; }
-    saveSettings(); state.dateCache={}; state.indexCacheAt=0; state.iconPackCacheAt=0; void refresh('manual');
-  });
   add('note','settings.plugin','给最新信号加备注',53,()=>{
     const latest=filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time))[0];
     if(!latest)return;
     let v=null;
     try{ v=typeof root.prompt==='function'?root.prompt('给最新信号加备注（跟了/没跟/观察）',noteOf(latest)):null; }catch(_){ v=null; }
     if(typeof v==='string'&&v.trim()){ state.settings.notes[noteKey(latest)]=v.trim(); state.settings.notes[noteKeyComposite(latest)]=v.trim(); saveSettings(); renderAll(); }
-  });
-  add('type','settings.plugin','信号类型：全部',54,()=>{
-    const steps=['all','t_signal','t_trade','kline_signal','kline_single','kline_combo'];
-    const labels={all:'全部',t_signal:'分时信号',t_trade:'分时成交',kline_signal:'K线信号',kline_single:'日K',kline_combo:'K线组合'};
-    const i=steps.indexOf(state.settings.typeFilter);
-    state.settings.typeFilter=steps[(i+1)%steps.length];
-    saveSettings(); renderAll();
-    const h=state.uiHandles.type; if(h)try{h.update?.({label:`信号类型：${labels[state.settings.typeFilter]}`})}catch(_){}
-  });
-  add('strategy','settings.plugin','策略筛选：全部',61,()=>{
-    const steps=['all','aggressive','conservative'];
-    const labels={all:'全部',aggressive:'只看激进',conservative:'只看保守'};
-    const i=steps.indexOf(state.settings.strategyFilter);
-    state.settings.strategyFilter=steps[(i+1)%steps.length];
-    saveSettings(); renderAll();
-    const h=state.uiHandles.strategy; if(h)try{h.update?.({label:`策略筛选：${labels[state.settings.strategyFilter]}`})}catch(_){}
   });
   add('reset','settings.plugin','恢复默认筛选',55,()=>{
     state.settings.minStrength=0; state.settings.directionFilter='all'; state.settings.typeFilter='all'; state.settings.strategyFilter='all'; state.settings.unreadOnly=false;
@@ -1048,33 +1213,26 @@ function setupUi(){
     state.settings={...DEFAULT_SETTINGS, ...keep};
     saveSettings(); renderAll();
   });
-  add('focusNext','settings.plugin','定位信号：下一条',57,()=>{ tidalFocusStep(1); });
-  add('focusPrev','settings.plugin','定位信号：上一条',58,()=>{ tidalFocusStep(-1); });
-  add('noteFocus','settings.plugin','给已定位信号加备注',59,()=>{
-    const sig=focusedSignal()||filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time))[0];
-    if(!sig)return;
-    let v=null;
-    try{ v=typeof root.prompt==='function'?root.prompt('给已定位信号加备注（跟了/没跟/观察）',noteOf(sig)):null; }catch(_){ v=null; }
-    if(typeof v==='string'&&v.trim()){ state.settings.notes[noteKey(sig)]=v.trim(); state.settings.notes[noteKeyComposite(sig)]=v.trim(); saveSettings(); renderAll(); }
-  });
-  add('export','settings.plugin','导出当天信号（复制）',60,()=>{
-    const csv=exportCsv();
-    try{ if(root.navigator?.clipboard?.writeText)void root.navigator.clipboard.writeText(csv); else if(typeof root.prompt==='function')root.prompt('当天信号（复制下面内容）',csv); }catch(_){}
-  });
-  add('unread','settings.plugin','只看未看：关',64,()=>{ state.settings.unreadOnly=!state.settings.unreadOnly; saveSettings(); renderAll(); const h=state.uiHandles.unread; if(h)try{h.update?.({label:`只看未看：${state.settings.unreadOnly?'开':'关'}`})}catch(_){} });
+  // V15 精简移除：定位信号下一条/上一条按钮——宿主至今不消费 focus 字段，按钮只改状态卡已定位行、无图上效果（V13 已写好此砍条件）；hook 的 focusNext/focusPrev/focusSignal 保留供宿主将来消费，信号本身不受影响。
   add('refreshPanel','panel.analysis','潮汐信号 刷新',21,()=>{ void refresh('manual'); });
   const card=mountUi({slot:'panel.analysis',kind:'stat-card',order:22,title:'今日信号',segments:[{text:'潮汐：未获取信号'}]});
   if(card)state.uiHandles.status=card;
   refreshToggleLabels();
 }
-/* 按 index 在可用日期间翻日；无 index 时按自然日步进 */
+/* 按 index 在可用日期间翻日；无 index 时按自然日步进
+ * V14：翻日跳过会话内已知空日（缓存信封当前股 0 条），未知日期不跳过（不谎称空）；
+ * 若沿方向全部都是已知空日，落回最近一个 index 日，不卡死在原地。 */
 function stepDate(dir){
   const cur=targetDate();
   if(state.dates.length){
     let i=state.dates.indexOf(cur);
     if(i<0)i=dir>0?state.dates.filter(d=>d>cur).length-1:state.dates.filter(d=>d<cur).length-1;
     if(i<0)i=dir>0?0:state.dates.length-1;
-    const next=state.dates[clamp(i+dir,0,state.dates.length-1)];
+    let next=null;
+    for(let j=i+dir; j>=0&&j<state.dates.length; j+=dir){
+      if(!isKnownEmptyDate(state.dates[j])){ next=state.dates[j]; break; }
+    }
+    if(!next)next=state.dates[clamp(i+dir,0,state.dates.length-1)];
     if(next)state.settings.viewDate=next===todayStr()?'':next;
   }else{
     const ms=Date.parse(`${cur}T00:00:00+08:00`)+dir*86400000;
@@ -1088,6 +1246,9 @@ function activate(ctx){
   state.ctx=ctx; state.disposed=false;
   // V7 修：停用清理删了 __AGP_TIDAL__，再启用必须重挂，否则热拔插第二轮起宿主图标读不到接口
   root.__AGP_TIDAL__=tidalHook;
+  // V15：折叠状态会话内保留、重激活复位为默认（次要段折叠、列表展开、开关组收起）。
+  state.collapsed={watchlist:true,cross:true,list:false};
+  state.switchesExpanded=false;
   // V8 修 R1：重激活/换源时会话缓存必须清零，否则旧源的 index/日期信封会残留到新源（实测：合成源切回真实源后仍显示合成空日期）
   state.dates=[]; state.dateCache={}; state.indexCacheAt=0; state.iconPackCacheAt=0; state.iconPackBase=''; state.iconPack={status:'builtin',source:'',applied:0,skipped:0,error:''}; for(const k of Object.keys(ICON_OVERRIDES)) delete ICON_OVERRIDES[k]; state.envelope=null; state.envelopeDate=''; state.generatedAt=''; state.fetchedAt=0; state.lastError=''; state.failCount=0; state.stale=false; state.focusIndex=-1;
   loadSettings(ctx);
