@@ -72,7 +72,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='V20';
+const ID='wed-ind.chaoxi.tidal', VER='V21';
 const DEFAULT_SOURCE='https://raw.githubusercontent.com/G-Lcn/MAi-AG/main/A-GP/Wed-DP/Plugins/external/CXZB-MuseAi-ZT';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
@@ -1224,11 +1224,56 @@ function selfPanelGroups(){
     ]},
   ];
 }
+/* V21 卡片面板（本地-only，未推）：全部三个分组按卡片方式画，不再用宿主单列行。
+ * 宿主标准分组渲染是标题前小三角 + 每行一整行，插件改不了宿主渲染，所以改用宿主
+ * 已提供的自定义 HTML 面板（html/frameHeight/onMessage，V64/V65 均有）：卡片、标题左、
+ * 折叠按钮在标题行最右且放大、多列网格，全部在 iframe 内画，功能与标准分组一一对应。
+ * 折叠状态会话内保留在 state.cardCollapsed，默认开关组折叠、今日活跃展开、高级设置折叠。 */
+function escHtml(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function cardCollapsed(){ if(!state.cardCollapsed) state.cardCollapsed={switches:true, signals:false, advanced:true}; return state.cardCollapsed; }
+function selfPanelHtml(){
+  const s=state.settings, sum=summaryLine(), fb=filterBreakdown(), cc=cardCollapsed();
+  const css='.wrap{font-family:inherit;color:#dce8ee;padding:2px}.card{border:1px solid #3d6074;border-radius:10px;background:#162636;padding:8px 10px;margin:8px 0}.card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.card-title{font-weight:700;font-size:13px}.collapse{font-size:20px;line-height:1;padding:4px 10px;border:1px solid #435668;border-radius:6px;background:#203044;color:#dce8ee;cursor:pointer}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}.item{display:flex;align-items:center;justify-content:space-between;gap:6px;background:#101b27;border:1px solid #273644;border-radius:6px;padding:6px 8px;font-size:12px;min-width:0}.item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.item button,.item select{background:#203044;color:#dce8ee;border:1px solid #435668;border-radius:5px;padding:4px 6px;cursor:pointer}.full{margin:6px 0;font-size:12px;color:#97b5c6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.btn{width:100%;background:#203044;color:#dce8ee;border:1px solid #435668;border-radius:6px;padding:7px;cursor:pointer}';
+  const card=(id,title,body)=>{ const c=!!cc[id]; return '<div class="card"><div class="card-head"><span class="card-title">'+escHtml(title)+'</span><button class="collapse" data-collapse="'+id+'" aria-label="折叠">'+(c?'▸':'▾')+'</button></div>'+(c?'':'<div class="card-body">'+body+'</div>')+'</div>'; };
+  const sw='<div class="grid2">'
+    +'<label class="item"><span>分时标记</span><input type="checkbox" data-row="intraday" '+(s.intradayEnabled?'checked':'')+'></label>'
+    +'<label class="item"><span>K线标记</span><input type="checkbox" data-row="kline" '+(s.klineEnabled?'checked':'')+'></label>'
+    +'<label class="item"><span>直接标签</span><input type="checkbox" data-row="direct" '+(s.directLabelEnabled?'checked':'')+'></label></div>';
+  const sig='<div class="full">共'+sum.total+'条 · 剩余'+(fb.remaining||sum.total)+'条 · 未看'+sum.unread+'条</div><div class="grid3">'
+    +'<button class="btn" data-row="prevDay">上一日</button><button class="btn" data-row="today">当日</button><button class="btn" data-row="nextDay">下一日</button></div>';
+  const adv='<div class="full" title="'+escHtml(baseUrl())+'">信号源：'+escHtml(baseUrl())+'</div><div class="grid2">'
+    +'<button class="btn" data-row="refresh">刷新信号</button><button class="btn" data-row="seen">已看清零</button>'
+    +'<button class="btn" data-row="resetFilters">恢复默认筛选</button><button class="btn" data-row="resetAll">恢复默认设置</button></div><div class="grid2" style="margin-top:6px">'
+    +'<label class="item"><span>密集合并 ×N</span><input type="checkbox" data-row="dense" '+(s.denseGroupEnabled?'checked':'')+'></label>'
+    +'<label class="item"><span>方向</span><select data-row="direction"><option value="all"'+(s.directionFilter==='all'?' selected':'')+'>全部</option><option value="buy"'+(s.directionFilter==='buy'?' selected':'')+'>买入</option><option value="sell"'+(s.directionFilter==='sell'?' selected':'')+'>卖出</option></select></label>'
+    +'<label class="item"><span>类型</span><select data-row="type"><option value="all"'+(s.typeFilter==='all'?' selected':'')+'>全部</option><option value="t_signal"'+(s.typeFilter==='t_signal'?' selected':'')+'>分时信号</option><option value="kline_signal"'+(s.typeFilter==='kline_signal'?' selected':'')+'>K线信号</option><option value="kline_single"'+(s.typeFilter==='kline_single'?' selected':'')+'>日K</option><option value="kline_combo"'+(s.typeFilter==='kline_combo'?' selected':'')+'>K线组合</option></select></label>'
+    +'<label class="item"><span>强度 ≥'+s.minStrength+'</span><input type="range" data-row="strength" min="0" max="100" step="1" value="'+s.minStrength+'"></label></div>';
+  const js="document.addEventListener('click',function(e){var c=e.target.closest('[data-collapse]');if(c){var card=c.closest('.card');var body=card&&card.querySelector('.card-body');if(body){var hid=body.style.display==='none';body.style.display=hid?'':'none';c.textContent=hid?'▾':'▸';}parent.postMessage({type:'card-collapse',group:c.getAttribute('data-collapse')},'*');return;}var t=e.target.closest('[data-row]');if(t&&t.tagName==='BUTTON'){parent.postMessage({type:'card-control',row:t.getAttribute('data-row'),value:true},'*');}});document.addEventListener('change',function(e){var t=e.target.closest('[data-row]');if(!t)return;var v=t.type==='checkbox'?t.checked:(t.type==='range'?Number(t.value):t.value);parent.postMessage({type:'card-control',row:t.getAttribute('data-row'),value:v},'*');});";
+  return '<style>'+css+'</style><div class="wrap">'+card('switches','开关组',sw)+card('signals','今日活跃信号',sig)+card('advanced','高级设置',adv)+'</div><script>'+js+'</'+'script>';
+}
+function panelCardControl(rid,v){
+    if(rid==='intraday'){ state.settings.intradayEnabled=!!v; }
+    else if(rid==='kline'){ state.settings.klineEnabled=!!v; }
+    else if(rid==='direct'){ state.settings.directLabelEnabled=!!v; }
+    else if(rid==='dense'){ state.settings.denseGroupEnabled=!!v; }
+    else if(rid==='direction'){ state.settings.directionFilter=String(v); }
+    else if(rid==='type'){ state.settings.typeFilter=String(v); }
+    else if(rid==='strength'){ state.settings.minStrength=Number(v)||0; }
+    else if(rid==='prevDay'){ stepDate(-1); return; }
+    else if(rid==='today'){ state.settings.viewDate=''; saveSettings(); void refresh('icon-date'); return; }
+    else if(rid==='nextDay'){ stepDate(1); return; }
+    else if(rid==='refresh'){ void refresh('manual'); return; }
+    else if(rid==='seen'){ markAllSeen(); return; }
+    else if(rid==='resetFilters'){ state.settings.minStrength=0; state.settings.directionFilter='all'; state.settings.typeFilter='all'; state.settings.strategyFilter='all'; state.settings.unreadOnly=false; }
+    else if(rid==='resetAll'){ const keep={sourceBaseUrl:state.settings.sourceBaseUrl, sourceCustom:state.settings.sourceCustom, notes:state.settings.notes, noteStyles:state.settings.noteStyles, iconPos:state.settings.iconPos}; state.settings={...DEFAULT_SETTINGS, ...keep}; }
+    else return;
+    saveSettings(); renderAll();
+}
 function selfPanelSpec(){
   const sum=summaryLine(), date=state.envelopeDate||targetDate();
-  return {key:'main', title:'潮汐快捷操作', version:VER, icon:'潮', areas:['main.intraday','main.kline'], stock:`${sum.symbol||'--'} · 接口已连接`, date:date, settings:true, groups:selfPanelGroups(), onAction:(detail)=>{
+  return {key:'main', title:'潮汐快捷操作', version:VER, icon:'潮', areas:['main.intraday','main.kline'], stock:`${sum.symbol||'--'} · 接口已连接`, date:date, settings:true, width:500, minWidth:260, maxWidth:900, html:selfPanelHtml(), frameHeight:560, onMessage:(msg)=>{ if(!msg||typeof msg!=='object')return; if(msg.type==='card-collapse'){ const cc=cardCollapsed(); cc[msg.group]=!cc[msg.group]; updateSelfPanel(); return; } if(msg.type==='card-control'){ panelCardControl(msg.row, msg.value); updateSelfPanel(); } }, groups:selfPanelGroups(), onAction:(detail)=>{
     const a=detail?.action, gid=detail?.groupId, rid=detail?.rowId, v=detail?.value;
-    if(a==='settings'){ /* 高级设置入口：展开高级分组的办法是更新面板时把 advanced 组置为默认展开？宿主折叠状态持久化，插件侧用开关组入口提示 */
+    if(a==='settings'){ cardCollapsed().advanced=false;
       try{ const h=state.uiHandles.selfPanel; if(h) h.update(selfPanelSpec()); }catch(_){}
       return; }
     if(a!=='control')return;
