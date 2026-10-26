@@ -72,7 +72,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='V25';
+const ID='wed-ind.chaoxi.tidal', VER='V26';
 const DEFAULT_SOURCE='https://raw.githubusercontent.com/G-Lcn/MAi-AG/main/A-GP/Wed-DP/Plugins/external/CXZB-MuseAi-ZT';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
@@ -778,6 +778,13 @@ function statusText(){
   if(k==='error-format')return `信号源断了（格式不对）：${state.lastError}，旧信号保留`;
   return `正常：${date} 信号已更新`;
 }
+/* 触发器按当前区域计数：分时图只算分时信号，K线图只算与当前周期同周期的K线信号；周期未知时回落全部 */
+function areaSignalCount(){
+  const all=visibleSignals(), host=String(state.period||'');
+  if(host==='time')return all.filter(x=>String(x.chart||'')==='intraday').length;
+  if(host==='day'||host==='m30'||host==='30m'||host==='m5'||host==='5m')return all.filter(x=>String(x.chart||'')==='kline'&&klinePeriodMatches(x)).length;
+  return all.length;
+}
 function summaryLine(){
   const all=visibleSignals(), rows=filteredSignals();
   const buy=all.filter(x=>sideOf(x)==='buy').length, sell=all.length-buy;
@@ -1273,7 +1280,8 @@ function panelCardControl(rid,v){
 }
 function selfPanelSpec(){
   const sum=summaryLine(), date=state.envelopeDate||targetDate();
-  return {key:'main-v23', title:'潮汐 Muse Ai', version:VER, icon:'潮', triggerStyle:{size:36, fontSize:26}, signal:{active:sum.total>0, symbol:sum.symbol||''}, badge:{kind:'number', metric:'today-active', value:sum.total, visible:sum.total>0}, areas:['main.intraday','main.kline'], stock:`${sum.symbol||'--'} · 接口已连接`, date:date, settings:true, width:500, minWidth:260, maxWidth:900, html:selfPanelHtml(), frameHeight:panelFrameHeight(), onMessage:(msg)=>{ if(!msg||typeof msg!=='object')return; if(msg.type==='card-collapse'){ const cc=cardCollapsed(); cc[msg.group]=!cc[msg.group]; updateSelfPanel(); return; } if(msg.type==='card-control'){ panelCardControl(msg.row, msg.value); updateSelfPanel(); } }, groups:selfPanelGroups(), onAction:(detail)=>{
+  const areaCount=areaSignalCount();
+  return {key:'main-v23', title:'潮汐 Muse Ai', version:VER, icon:'潮', triggerStyle:{size:36, fontSize:26}, signal:{active:areaCount>0, symbol:sum.symbol||''}, badge:{kind:'number', metric:'today-active', value:areaCount, visible:areaCount>0}, areas:['main.intraday','main.kline'], stock:`${sum.symbol||'--'} · 接口已连接`, date:date, settings:true, width:500, minWidth:260, maxWidth:900, html:selfPanelHtml(), frameHeight:panelFrameHeight(), onMessage:(msg)=>{ if(!msg||typeof msg!=='object')return; if(msg.type==='card-collapse'){ const cc=cardCollapsed(); cc[msg.group]=!cc[msg.group]; updateSelfPanel(); return; } if(msg.type==='card-control'){ panelCardControl(msg.row, msg.value); updateSelfPanel(); } }, groups:selfPanelGroups(), onAction:(detail)=>{
     const a=detail?.action, gid=detail?.groupId, rid=detail?.rowId, v=detail?.value;
     if(a==='settings'){ cardCollapsed().advanced=false;
       try{ const h=state.uiHandles.selfPanel; if(h) h.update(selfPanelSpec()); }catch(_){}
