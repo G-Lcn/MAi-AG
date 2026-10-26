@@ -1,4 +1,18 @@
 (()=>{ 'use strict';
+/* V20（2026-10-26，本地-only，排除自身问题后定稿）：
+ * V19 错把宿主快捷面板当成唯一面板，插件从未用过宿主已提供的自有面板与备注编辑器接口，
+ * 导致“面板改不了、双击备注做不了”被误判成宿主问题。V20 先修插件自己：
+ * ① 自有面板：ctx.ui.mountPanel（宿主 V64 已提供，标题栏自带版本号、右上角 ⚙ 高级设置入口、
+ *    股票+日期同行、分组默认折叠且折叠状态持久化），插件自己画主窗口，不再等宿主快捷面板改；
+ *    宿主检测到自有面板后会自动隐藏宿主潮汐图标并关闭宿主快捷面板，见 host tidalHostSync。
+ * ② 双击备注：标记层 layer.on('dblclick') 注册（V19 从未注册，宿主原生双击路径用 hover 命中、
+ *    无监听时直接返回，备注自然接不到）；双击后调 ctx.ui.openNoteEditor（宿主已提供，
+ *    轻量文本+保存/取消），存入 setNoteById，失败时回落 prompt；标记仍保持 hoverOnly，
+ *    不拦截图表拖动。
+ * ③ 高级设置：详细筛选/恢复/刷新全部移到自有面板“高级设置”分组（默认折叠），主窗口只留
+ *    股票+日期、开关组（默认折叠）、今日活跃信号，功能不砍只换地方。
+ */
+
 /*
  * V19（2026-10-26，用户 12:08 定稿上传）：主窗口尽量简化、功能不简化，详细设置移到高级设置。插件侧可做的：设置对话框去重（删与顶部入口重复的开关组按钮、删恢复默认信号源独立按钮，信号源 URL 留空即恢复默认）、删设置里的翻日导航（翻日走主窗口股票行/宿主快捷面板与 hook setSignalDatePreset）、删设置里的备注按钮（备注入口改到图上信号标签双击，见 hook setNote/editNote，轻量弹出、不搞复杂编辑器）；备注数据与样式走 hook：setNote(id,text,style) 只认文字 + 简单字号/颜色，标记上带 noteLabel/noteStyle 供宿主画在标签上方，宿主未画时备注仍在悬停与信号列表里；宿主快捷面板用的结构化字段见 tidalState 的 quickPanel/settingsForm（标题栏版本号、股票行日期、高级设置右上角入口、开关组默认折叠，均为宿主渲染项，插件只提供数据，不谎报宿主已画）。
  * 潮汐指标-MuseAi（V15，本地-only，未推）
@@ -58,7 +72,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='V19';
+const ID='wed-ind.chaoxi.tidal', VER='V20';
 const DEFAULT_SOURCE='https://raw.githubusercontent.com/G-Lcn/MAi-AG/main/A-GP/Wed-DP/Plugins/external/CXZB-MuseAi-ZT';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
@@ -912,7 +926,7 @@ function renderStatus(){
   const card=state.uiHandles.status;
   if(card){ try{ card.update?.({segments:statusSegments()}); }catch(_){ /* 状态卡更新失败不影响标记 */ } }
 }
-function renderAll(){ renderMarkers(); renderStatus(); refreshToggleLabels(); emitTidal(); }
+function renderAll(){ renderMarkers(); renderStatus(); refreshToggleLabels(); updateSelfPanel(); emitTidal(); }
 
 /* ---------------- 宿主图标用状态接口（V5 匹配，插件不画图标） ----------------
  * 宿主图标只读这个接口，不直接写插件 workspace、不自己算信号数。
@@ -1095,7 +1109,7 @@ const tidalHook={
   // V19 备注：轻量，双击图上标签时宿主调 setNote/editNote；样式只认简单字号/颜色。
   setNote:(id,text,style)=>setNoteById(id,text,style),
   getNote:(id)=>{ const key=String(id||''); return state.settings.notes[key]||''; },
-  editNote:(id)=>{ const key=String(id||''); if(!key)return false; let v=null; try{ v=typeof root.prompt==='function'?root.prompt('备注（轻量，写完显示在标签上方）',state.settings.notes[key]||''):null; }catch(_){ v=null; } if(typeof v!=='string')return false; return setNoteById(key,v); },
+  editNote:(id)=>{ const key=String(id||''); if(!key)return false; try{ const api=state.ctx?.ui; if(api&&typeof api.openNoteEditor==='function'){ api.openNoteEditor({id:key, title:'信号备注', text:state.settings.notes[key]||'', style:state.settings.noteStyles?.[key]||{}, onSave:(sid,text,style)=>setNoteById(sid,text,style)}); return true; } }catch(_){} let v=null; try{ v=typeof root.prompt==='function'?root.prompt('备注（轻量，写完显示在标签上方）',state.settings.notes[key]||''):null; }catch(_){ v=null; } if(typeof v!=='string')return false; return setNoteById(key,v); },
 };
 root.__AGP_TIDAL__=tidalHook;
 
@@ -1180,6 +1194,95 @@ function refreshToggleLabels(){
     if(h){ try{ h.update?.({label:map[k]}); }catch(_){} }
   }
 }
+
+/* V20 自有面板与双击备注：插件自己能动的面，先用完再定宿主问题 */
+function selfPanelGroups(){
+  const s=state.settings, sum=summaryLine(), fb=filterBreakdown();
+  const date=state.envelopeDate||targetDate();
+  return [
+    {id:'switches', title:'开关组', defaultCollapsed:true, rows:[
+      {id:'intraday', kind:'toggle', label:'分时标记', value:!!s.intradayEnabled},
+      {id:'kline', kind:'toggle', label:'K线标记', value:!!s.klineEnabled},
+      {id:'direct', kind:'toggle', label:'直接标签', value:!!s.directLabelEnabled},
+    ]},
+    {id:'signals', title:'今日活跃信号', defaultCollapsed:false, rows:[
+      {id:'active', kind:'text', label:`共${sum.total}条 · 剩余${fb.remaining||sum.total}条 · 未看${sum.unread}条`, value:''},
+      {id:'prevDay', kind:'button', label:'上一日', value:'上一日'},
+      {id:'today', kind:'button', label:'当日', value:'当日'},
+      {id:'nextDay', kind:'button', label:'下一日', value:'下一日'},
+    ]},
+    {id:'advanced', title:'高级设置', defaultCollapsed:true, rows:[
+      {id:'source', kind:'text', label:`信号源：${baseUrl()}`, value:''},
+      {id:'refresh', kind:'button', label:'刷新信号', value:'刷新信号'},
+      {id:'seen', kind:'button', label:'已看清零', value:'已看清零'},
+      {id:'resetFilters', kind:'button', label:'恢复默认筛选', value:'恢复默认筛选'},
+      {id:'resetAll', kind:'button', label:'恢复默认设置', value:'恢复默认设置'},
+      {id:'dense', kind:'toggle', label:'密集信号合并 ×N', value:!!s.denseGroupEnabled},
+      {id:'direction', kind:'select', label:'方向筛选', value:s.directionFilter, options:[{value:'all',label:'全部'},{value:'buy',label:'买入'},{value:'sell',label:'卖出'}]},
+      {id:'type', kind:'select', label:'信号类型', value:s.typeFilter, options:[{value:'all',label:'全部'},{value:'t_signal',label:'分时信号'},{value:'kline_signal',label:'K线信号'},{value:'kline_single',label:'日K'},{value:'kline_combo',label:'K线组合'}]},
+      {id:'strength', kind:'range', label:'强度筛选', value:s.minStrength, min:0, max:100, step:1},
+    ]},
+  ];
+}
+function selfPanelSpec(){
+  const sum=summaryLine(), date=state.envelopeDate||targetDate();
+  return {key:'main', title:'潮汐快捷操作', version:VER, icon:'潮', areas:['main.intraday','main.kline'], stock:`${sum.symbol||'--'} · 接口已连接`, date:date, settings:true, groups:selfPanelGroups(), onAction:(detail)=>{
+    const a=detail?.action, gid=detail?.groupId, rid=detail?.rowId, v=detail?.value;
+    if(a==='settings'){ /* 高级设置入口：展开高级分组的办法是更新面板时把 advanced 组置为默认展开？宿主折叠状态持久化，插件侧用开关组入口提示 */
+      try{ const h=state.uiHandles.selfPanel; if(h) h.update(selfPanelSpec()); }catch(_){}
+      return; }
+    if(a!=='control')return;
+    if(rid==='intraday'){ state.settings.intradayEnabled=!!v; }
+    else if(rid==='kline'){ state.settings.klineEnabled=!!v; }
+    else if(rid==='direct'){ state.settings.directLabelEnabled=!!v; }
+    else if(rid==='dense'){ state.settings.denseGroupEnabled=!!v; }
+    else if(rid==='direction'){ state.settings.directionFilter=String(v); }
+    else if(rid==='type'){ state.settings.typeFilter=String(v); }
+    else if(rid==='strength'){ state.settings.minStrength=Number(v)||0; }
+    else if(rid==='prevDay'){ stepDate(-1); return; }
+    else if(rid==='today'){ state.settings.viewDate=''; saveSettings(); void refresh('icon-date'); return; }
+    else if(rid==='nextDay'){ stepDate(1); return; }
+    else if(rid==='refresh'){ void refresh('manual'); return; }
+    else if(rid==='seen'){ markAllSeen(); return; }
+    else if(rid==='resetFilters'){ state.settings.minStrength=0; state.settings.directionFilter='all'; state.settings.typeFilter='all'; state.settings.strategyFilter='all'; state.settings.unreadOnly=false; }
+    else if(rid==='resetAll'){ const keep={sourceBaseUrl:state.settings.sourceBaseUrl, sourceCustom:state.settings.sourceCustom, notes:state.settings.notes, noteStyles:state.settings.noteStyles, iconPos:state.settings.iconPos}; state.settings={...DEFAULT_SETTINGS, ...keep}; }
+    else return;
+    saveSettings(); renderAll();
+  }};
+}
+function mountSelfPanel(){
+  try{
+    const api=state.ctx?.ui;
+    if(!api?.mountPanel) return null;
+    if(state.uiHandles.selfPanel) return state.uiHandles.selfPanel;
+    const h=api.mountPanel(selfPanelSpec());
+    if(h) state.uiHandles.selfPanel=h;
+    return h;
+  }catch(_){ return null; }
+}
+function updateSelfPanel(){
+  try{ const h=state.uiHandles.selfPanel; if(h&&typeof h.update==='function') h.update(selfPanelSpec()); }catch(_){}
+}
+function openNoteEditorFor(id){
+  const key=String(id||''); if(!key) return false;
+  try{
+    const api=state.ctx?.ui;
+    if(api&&typeof api.openNoteEditor==='function'){
+      api.openNoteEditor({id:key, title:'信号备注', text:state.settings.notes[key]||'', style:state.settings.noteStyles?.[key]||{}, onSave:(sid,text,style)=>setNoteById(sid,text,style)});
+      return true;
+    }
+  }catch(_){}
+  return tidalHook.editNote(key);
+}
+function registerDblclick(){
+  for(const context of [CTX_INTRA,CTX_KLINE]){
+    const layer=state.layers[context];
+    if(layer&&typeof layer.on==='function'){
+      try{ layer.on('dblclick',(detail)=>{ const id=detail?.eventKey||detail?.id||''; if(id) openNoteEditorFor(id); }); }catch(_){}
+    }
+  }
+}
+
 function setupUi(){
   const add=(key,slot,label,order,onAction)=>{
     const h=mountUi({slot,kind:'button',label,order,onAction});
@@ -1219,6 +1322,7 @@ function setupUi(){
   add('refreshPanel','panel.analysis','潮汐信号 刷新',21,()=>{ void refresh('manual'); });
   const card=mountUi({slot:'panel.analysis',kind:'stat-card',order:22,title:'今日信号',segments:[{text:'潮汐：未获取信号'}]});
   if(card)state.uiHandles.status=card;
+  mountSelfPanel();
   refreshToggleLabels();
 }
 /* 按 index 在可用日期间翻日；无 index 时按自然日步进
@@ -1262,6 +1366,7 @@ function activate(ctx){
       if(layer&&typeof layer.setData==='function')state.layers[context]=layer;
     }catch(_){ /* 权限/宿主差异时静默降级 */ }
   }
+  registerDblclick();
   setupUi();
   /* 视图变化：重绑 + 按新 symbol/period 重新投影（合同示例） */
   const onView=()=>{
