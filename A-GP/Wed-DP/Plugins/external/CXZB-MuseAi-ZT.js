@@ -1,5 +1,6 @@
 (()=>{ 'use strict';
 /*
+ * V19（2026-10-26，用户 12:08 定稿上传）：主窗口尽量简化、功能不简化，详细设置移到高级设置。插件侧可做的：设置对话框去重（删与顶部入口重复的开关组按钮、删恢复默认信号源独立按钮，信号源 URL 留空即恢复默认）、删设置里的翻日导航（翻日走主窗口股票行/宿主快捷面板与 hook setSignalDatePreset）、删设置里的备注按钮（备注入口改到图上信号标签双击，见 hook setNote/editNote，轻量弹出、不搞复杂编辑器）；备注数据与样式走 hook：setNote(id,text,style) 只认文字 + 简单字号/颜色，标记上带 noteLabel/noteStyle 供宿主画在标签上方，宿主未画时备注仍在悬停与信号列表里；宿主快捷面板用的结构化字段见 tidalState 的 quickPanel/settingsForm（标题栏版本号、股票行日期、高级设置右上角入口、开关组默认折叠，均为宿主渲染项，插件只提供数据，不谎报宿主已画）。
  * 潮汐指标-MuseAi（V15，本地-only，未推）
  * V15（2026-10-25，本地-only，未推）：版本号显示 + 折叠展示 + 移除无意义开关。用户看截图后定：取消“标记总开关”和“虚线”两个开关——插件面删掉这两个开关，内部固定开启（总开关恒开、虚线恒开），分时/K线/直接标签各自开关不动；hook 里这两个字段恒 true 兼容宿主，宿主面板不因此变未知；宿主侧删开关另走宿主信，插件不编造宿主行为。随后用户再定全量精简：全部开关/按钮/状态卡行/列表项/筛选项逐个再问一次，无决策信息损失就移除（见报告移除清单），只留精简有意义的。
  * V15（2026-10-25，本地-only，未推）：版本号显示 + 折叠展示。版本号不再只藏在 hook 里，状态卡首行即写“潮汐 V15”，使用者一眼知道装的是哪一版；状态卡分段可折叠（次要段、信号列表），折叠只改状态卡文案，不改标记、不改角标、不改筛选，折叠状态会话内保留、重激活复位；开关组（标记/分时/K线/强度/方向/类型/策略/密集/只看未看）默认收起，只露一个“开关组：展开”入口，点开才挂全部开关按钮，收起时开关本身状态与信号显示不变。被砍的方案：版本号单独成行（多占 1 行，V13 刚压过行数）、每段 6 个独立按钮（设置面板臃肿，V13 刚砍过重复按钮）、折叠时整段删除（看不出该段存在）、折叠状态写进 workspace 持久化（任务定会话内保留，且重激活复位更可预测）、折叠图上标记本身（会丢信号，违背折叠不丢信号）。
@@ -57,7 +58,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='V18';
+const ID='wed-ind.chaoxi.tidal', VER='V19';
 const DEFAULT_SOURCE='https://raw.githubusercontent.com/G-Lcn/MAi-AG/main/A-GP/Wed-DP/Plugins/external/CXZB-MuseAi-ZT';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
@@ -79,6 +80,7 @@ const DEFAULT_SETTINGS=Object.freeze({
   minStrength:0,           // 强度滑块：0=全显，拉到数值只显该值以上（批量二）
   directionFilter:'all',   // 方向筛选：all/buy/sell，与图标窗开关同套筛选
   notes:{},                // 信号备注：按信号 id 存，跟了/没跟/观察（批量二新增）
+  noteStyles:{},           // V19 备注样式：按信号 id 存，只认简单字号/颜色，不搞复杂编辑器；空 = 跟随标签默认
   typeFilter:'all',        // 信号类型筛选：all/分时T/分时信号/K线信号/K线组合（继续优化）
   strategyFilter:'all',    // V7 策略筛选：all/aggressive/conservative，按 source/strategy 含 aggressive/conservative 判定
   denseGroupEnabled:true,  // V8 密集分组：5 分钟内同价同向信号合为 1 个 ×N 标记，列表仍列全部不漏
@@ -248,6 +250,7 @@ function loadSettings(ctx){
   if(Number.isFinite(Number(saved.minStrength)))s.minStrength=Math.max(0,Math.min(100,Number(saved.minStrength)));
   if(['all','buy','sell'].includes(saved.directionFilter))s.directionFilter=saved.directionFilter;
   if(saved.notes&&typeof saved.notes==='object')s.notes={...saved.notes};
+  if(saved.noteStyles&&typeof saved.noteStyles==='object'){ s.noteStyles={}; for(const [k,v] of Object.entries(saved.noteStyles)) if(v&&typeof v==='object'){ const fs=Number(v.fontSize); const col=String(v.color||''); s.noteStyles[k]={fontSize:Number.isFinite(fs)?Math.max(10,Math.min(18,Math.floor(fs))):12, color:/^#[0-9a-fA-F]{6}$/.test(col)?col:''}; } }
   if(Number.isFinite(Number(saved.seenCount)))s.seenCount=Math.max(0,Number(saved.seenCount));
   if(['all','t_signal','t_trade','kline_signal','kline_single','kline_combo','t_breakout'].includes(saved.typeFilter))s.typeFilter=saved.typeFilter;
   if(typeof saved.unreadOnly==='boolean')s.unreadOnly=saved.unreadOnly;
@@ -270,6 +273,10 @@ function strategyOf(sig){
 function noteKey(sig){ return String(sig?.id||''); }
 function noteKeyComposite(sig){ return `${sig?.code||state.symbol}|${String(sig?.date||'').slice(0,10)}|${sig?.id||''}`; }
 function noteOf(sig){ return state.settings.notes[noteKey(sig)]||state.settings.notes[noteKeyComposite(sig)]||''; }
+function noteStyleOf(sig){ const st=state.settings.noteStyles||{}; return st[noteKey(sig)]||st[noteKeyComposite(sig)]||{fontSize:12,color:''}; }
+function sanitizeNoteStyle(style){ if(!style||typeof style!=='object')return {fontSize:12,color:''}; const fs=Number(style.fontSize); const col=String(style.color||''); return {fontSize:Number.isFinite(fs)?Math.max(10,Math.min(18,Math.floor(fs))):12, color:/^#[0-9a-fA-F]{6}$/.test(col)?col:''}; }
+// V19 备注：轻量，只认文字 + 简单字号/颜色；空文字 = 删除该条备注与样式。宿主双击标签时调 hook setNote/editNote，不走设置对话框。
+function setNoteById(id,text,style){ const key=String(id||''); if(!key)return false; if(typeof text!=='string'||!text.trim()){ delete state.settings.notes[key]; if(state.settings.noteStyles)delete state.settings.noteStyles[key]; } else { state.settings.notes[key]=text.trim().slice(0,200); if(style!==undefined)state.settings.noteStyles[key]=sanitizeNoteStyle(style); } saveSettings(); state.renderCache.key=''; state.renderCache.visible=null; state.renderCache.filtered=null; state.renderCache.markersIntra=null; state.renderCache.markersKline=null; renderAll(); return true; }
 function tooltipOf(sig){
   const ms=msOf(sig.time);
   const p=isNum(ms)?shParts(ms):{hour:'--',minute:'--'};
@@ -326,6 +333,7 @@ function toMarker(sig,anchorMs,groupedCount){
     interactive:true,
     hoverOnly:true,
     label:state.settings.directLabelEnabled?labelOf(sig,groupedCount):'',
+    note:noteOf(sig), noteLabel:noteOf(sig)?`备注：${noteOf(sig)}`:'', noteStyle:noteStyleOf(sig),
     direction:buy?'buy':'sell', side:buy?'buy':'sell',
     strategy:strategyOf(sig), period:String(sig.period||''), chart:String(sig.chart||''),
     styleCode:style.code, styleKey:(sig?.type==='t_trade'&&strategyOf(sig))?`${sig.type}_${strategyOf(sig)}`:String(sig?.type||'default'),
@@ -949,6 +957,10 @@ function tidalState(){
     previousSignal:previousSignalInfo(), reminderSignals:reminderSignals(),
     historyDates:historyDateInfo(),
     versionLabel:`潮汐 ${VER}`,
+    // V19 宿主快捷面板用结构化数据（插件只提供，宿主渲染与否、画成什么样由宿主定，不谎报已画）：标题栏版本号、股票行日期、开关组默认折叠、高级设置右上角入口、主窗口简化但功能不减。
+    quickPanel:{version:VER, versionLabel:`潮汐 ${VER}`, signalDate:date, switchGroupCollapsed:!state.switchesExpanded, advancedEntrance:'top-right', simplified:true, functionsPreserved:true},
+    settingsForm:{version:VER, sourceBaseUrl:baseUrl(), sourceCustom:s.sourceCustom, signalDate:date, display:{intradayEnabled:s.intradayEnabled, klineEnabled:s.klineEnabled, directLabelEnabled:s.directLabelEnabled, secondaryCollapsed:!!(state.collapsed.watchlist&&state.collapsed.cross), listCollapsed:!!state.collapsed.list}, filters:{minStrength:s.minStrength, directionFilter:s.directionFilter, typeFilter:s.typeFilter, strategyFilter:s.strategyFilter, denseGroupEnabled:s.denseGroupEnabled, unreadOnly:s.unreadOnly}},
+    noteEditor:{entry:'marker double-click', lightweight:true, fields:['text','fontSize','color']},
     sections:{watchlistCollapsed:!!state.collapsed.watchlist, crossCollapsed:!!state.collapsed.cross, listCollapsed:!!state.collapsed.list, filterCollapsed:false, mainCollapsed:false},
     switchesExpanded:!!state.switchesExpanded,
     summary:summaryLine(), periodOverview:periodOverview(), filterBreakdown:filterBreakdown(), watchlist:watchlistSummary(),
@@ -1079,7 +1091,11 @@ const tidalHook={
   setSwitchesExpanded:(v)=>{ setSwitchesExpanded(!!v); return state.switchesExpanded; },
   getSwitchesExpanded:()=>!!state.switchesExpanded,
   resetFilters:()=>{ state.settings.minStrength=0; state.settings.directionFilter='all'; state.settings.typeFilter='all'; state.settings.strategyFilter='all'; state.settings.unreadOnly=false; saveSettings(); renderAll(); return true; },
-  resetSettings:()=>{ const keep={sourceBaseUrl:state.settings.sourceBaseUrl, sourceCustom:state.settings.sourceCustom, notes:state.settings.notes, iconPos:state.settings.iconPos}; state.settings={...DEFAULT_SETTINGS, ...keep}; saveSettings(); renderAll(); return true; }
+  resetSettings:()=>{ const keep={sourceBaseUrl:state.settings.sourceBaseUrl, sourceCustom:state.settings.sourceCustom, notes:state.settings.notes, noteStyles:state.settings.noteStyles, iconPos:state.settings.iconPos}; state.settings={...DEFAULT_SETTINGS, ...keep}; saveSettings(); renderAll(); return true; },
+  // V19 备注：轻量，双击图上标签时宿主调 setNote/editNote；样式只认简单字号/颜色。
+  setNote:(id,text,style)=>setNoteById(id,text,style),
+  getNote:(id)=>{ const key=String(id||''); return state.settings.notes[key]||''; },
+  editNote:(id)=>{ const key=String(id||''); if(!key)return false; let v=null; try{ v=typeof root.prompt==='function'?root.prompt('备注（轻量，写完显示在标签上方）',state.settings.notes[key]||''):null; }catch(_){ v=null; } if(typeof v!=='string')return false; return setNoteById(key,v); },
 };
 root.__AGP_TIDAL__=tidalHook;
 
@@ -1170,7 +1186,7 @@ function setupUi(){
     if(h)state.uiHandles[key]=h;
     return h;
   };
-  add('source','settings.plugin','潮汐信号源 URL',41,()=>{
+  add('source','settings.plugin','潮汐信号源 URL（留空恢复默认）',41,()=>{
     const cur=state.settings.sourceBaseUrl;
     let v=null;
     try{ v=typeof root.prompt==='function'?root.prompt('潮汐信号源基地址（公开 HTTPS 直链目录，含 index.json 与 YYYY-MM-DD.json；留空则恢复默认公开地址）',cur):null; }catch(_){ v=null; }
@@ -1182,34 +1198,20 @@ function setupUi(){
   });
   // V18：设置面顶部入口——版本号 + 开关折叠状态同在一个按钮里，点它即展开/收起开关组；order 39 在原有 40+ 按钮之前，打开插件独立设置对话框第一眼就能看到。
   add('versionTop','settings.plugin',`潮汐指标 ${VER} · 开关组：已折叠`,39,()=>{ setSwitchesExpanded(!state.switchesExpanded); });
-  add('sourceDefault','settings.plugin','恢复默认信号源',40,()=>{
-    state.settings.sourceBaseUrl=DEFAULT_SOURCE; state.settings.sourceCustom=false;
-    saveSettings(); state.dateCache={}; state.indexCacheAt=0; state.iconPackCacheAt=0; void refresh('manual');
-  });
+  // V19：恢复默认信号源不再单独成按钮，信号源 URL 留空即恢复默认；开关组重复按钮已删，只留顶部 versionTop 一个入口。
   add('refresh','settings.plugin','潮汐信号 刷新',42,()=>{ void refresh('manual'); });
-  // V15 开关组默认收起：只露主入口；开关按钮由 setSwitchesExpanded(true) 按需挂载，收起时只 remove 句柄、不改设置。
-  add('switches','settings.plugin','开关组：已折叠',43,()=>{ setSwitchesExpanded(!state.switchesExpanded); });
   // V15 状态卡折叠入口（恒显示，否则折叠后无处展开）：次要段合一 + 信号列表各 1 个按钮，不搞每段 1 个按钮。
   add('secondary','settings.plugin','次要段：已折叠',63,()=>{ const v=!(state.collapsed.watchlist&&state.collapsed.cross); state.collapsed.watchlist=v; state.collapsed.cross=v; renderAll(); });
   add('listToggle','settings.plugin','信号列表：已展开',65,()=>{ state.collapsed.list=!state.collapsed.list; renderAll(); });
 
-  add('datePrev','settings.plugin','信号日期 上一日',47,()=>stepDate(-1));
-  add('date','settings.plugin','信号日期：今日',48,()=>{ state.settings.viewDate=''; saveSettings(); void refresh('manual'); });
-  add('dateNext','settings.plugin','信号日期 下一日',49,()=>stepDate(1));
+  // V19：翻日导航不在高级设置里，翻日走主窗口股票行 / 宿主快捷面板 / hook setSignalDatePreset；备注不在设置里，备注走图上标签双击 + hook setNote/editNote。
   add('seen','settings.plugin','已看清零',52,()=>{ markAllSeen(); });
-  add('note','settings.plugin','给最新信号加备注',53,()=>{
-    const latest=filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time))[0];
-    if(!latest)return;
-    let v=null;
-    try{ v=typeof root.prompt==='function'?root.prompt('给最新信号加备注（跟了/没跟/观察）',noteOf(latest)):null; }catch(_){ v=null; }
-    if(typeof v==='string'&&v.trim()){ state.settings.notes[noteKey(latest)]=v.trim(); state.settings.notes[noteKeyComposite(latest)]=v.trim(); saveSettings(); renderAll(); }
-  });
   add('reset','settings.plugin','恢复默认筛选',55,()=>{
     state.settings.minStrength=0; state.settings.directionFilter='all'; state.settings.typeFilter='all'; state.settings.strategyFilter='all'; state.settings.unreadOnly=false;
     saveSettings(); renderAll();
   });
   add('resetAll','settings.plugin','恢复默认设置（不改信号源/备注/图标位置）',56,()=>{
-    const keep={sourceBaseUrl:state.settings.sourceBaseUrl, sourceCustom:state.settings.sourceCustom, notes:state.settings.notes, iconPos:state.settings.iconPos};
+    const keep={sourceBaseUrl:state.settings.sourceBaseUrl, sourceCustom:state.settings.sourceCustom, notes:state.settings.notes, noteStyles:state.settings.noteStyles, iconPos:state.settings.iconPos};
     state.settings={...DEFAULT_SETTINGS, ...keep};
     saveSettings(); renderAll();
   });
