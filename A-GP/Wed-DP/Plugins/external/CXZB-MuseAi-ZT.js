@@ -72,7 +72,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='V23';
+const ID='wed-ind.chaoxi.tidal', VER='V24';
 const DEFAULT_SOURCE='https://raw.githubusercontent.com/G-Lcn/MAi-AG/main/A-GP/Wed-DP/Plugins/external/CXZB-MuseAi-ZT';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
@@ -1273,7 +1273,7 @@ function panelCardControl(rid,v){
 }
 function selfPanelSpec(){
   const sum=summaryLine(), date=state.envelopeDate||targetDate();
-  return {key:'main-v23', title:'潮汐 Muse Ai', version:VER, icon:'潮', areas:['main.intraday','main.kline'], stock:`${sum.symbol||'--'} · 接口已连接`, date:date, settings:true, width:500, minWidth:260, maxWidth:900, html:selfPanelHtml(), frameHeight:panelFrameHeight(), onMessage:(msg)=>{ if(!msg||typeof msg!=='object')return; if(msg.type==='card-collapse'){ const cc=cardCollapsed(); cc[msg.group]=!cc[msg.group]; updateSelfPanel(); return; } if(msg.type==='card-control'){ panelCardControl(msg.row, msg.value); updateSelfPanel(); } }, groups:selfPanelGroups(), onAction:(detail)=>{
+  return {key:'main-v23', title:'潮汐 Muse Ai', version:VER, icon:'潮', triggerStyle:{size:36, fontSize:26}, areas:['main.intraday','main.kline'], stock:`${sum.symbol||'--'} · 接口已连接`, date:date, settings:true, width:500, minWidth:260, maxWidth:900, html:selfPanelHtml(), frameHeight:panelFrameHeight(), onMessage:(msg)=>{ if(!msg||typeof msg!=='object')return; if(msg.type==='card-collapse'){ const cc=cardCollapsed(); cc[msg.group]=!cc[msg.group]; updateSelfPanel(); return; } if(msg.type==='card-control'){ panelCardControl(msg.row, msg.value); updateSelfPanel(); } }, groups:selfPanelGroups(), onAction:(detail)=>{
     const a=detail?.action, gid=detail?.groupId, rid=detail?.rowId, v=detail?.value;
     if(a==='settings'){ cardCollapsed().advanced=false;
       try{ const h=state.uiHandles.selfPanel; if(h) h.update(selfPanelSpec()); }catch(_){}
