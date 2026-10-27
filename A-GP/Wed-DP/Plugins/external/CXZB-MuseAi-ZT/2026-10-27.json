@@ -2,7 +2,7 @@
  "kind": "chaoxi-intraday-signals",
  "version": 1,
  "date": "2026-10-27",
- "generated_at": "2026-10-27T20:30:05+08:00",
+ "generated_at": "2026-10-27T20:36:47+08:00",
  "signals": [
   {
    "id": "2026-10-27-001",
@@ -107,7 +107,7 @@
    "code": "002050",
    "name": "三花智控",
    "chart": "kline",
-   "period": "intraday",
+   "period": "day",
    "type": "kline_signal",
    "side": "sell",
    "time": "2026-10-27T13:55:18+08:00",

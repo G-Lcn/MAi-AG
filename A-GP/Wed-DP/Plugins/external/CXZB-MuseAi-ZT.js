@@ -1,4 +1,24 @@
 (()=>{ 'use strict';
+/* V30（2026-10-27，本地-only，未推）：用户看截图反馈——K线信号行里看不出周期。
+ * 改：今日活跃信号列表行（卡片面板与标准分组两处）K线行在指标代码后补周期，
+ * 如“K线T·5分K ▲买 34.51”“K线T·日K ▼卖 34.51”；悬停文案同步由原始周期码（5m）
+ * 改为中文周期。周期缺失的K线行不编造，写“周期未标”；数据源侧评分信号周期已由
+ * 组装器补为日K（见 build_signals.py），历史文件里的评分行仍以“周期未标”示人。
+ * 分时行不动（代码本身已是分时T），图上直接标签不动（标记已落在对应周期图上）。
+ * 同批追加（用户看 K 线截图反馈）：K线信号图上标记由方块改上下箭头——方块不指方向、
+ * 压在 K 线上不显眼；买朝上、卖朝下，颜色与直接标签不变；虚线本身插件一直恒发
+ * （toMarker dashedLine，V15 起固定开启），箭头+虚线+直接标签即用户 10-24 定过的
+ * “信号价位画虚线、旁边箭头引出买卖说明”那套。日K星形、K线组合旗形不动，只改 K线T。
+ */
+function periodLabel(sig){
+  const p=String(sig?.period||'');
+  if(p==='day')return '日K';
+  if(p==='30m')return '30分K';
+  if(p==='5m')return '5分K';
+  if(p==='60m')return '60分K';
+  if(String(sig?.chart||'')==='kline')return '周期未标'; // K线信号缺周期不编造
+  return '分时';
+}
 /* V20（2026-10-26，本地-only，排除自身问题后定稿）：
  * V19 错把宿主快捷面板当成唯一面板，插件从未用过宿主已提供的自有面板与备注编辑器接口，
  * 导致“面板改不了、双击备注做不了”被误判成宿主问题。V20 先修插件自己：
@@ -72,7 +92,7 @@
 const root=globalThis, raw=root.__AGP_PLUGIN_BOOTSTRAP__, bag=raw&&Array.isArray(raw.plugins)?raw:{schemaVersion:1,plugins:[]}; if(raw!==bag)root.__AGP_PLUGIN_BOOTSTRAP__=bag;
 
 /* ---------------- 常量 ---------------- */
-const ID='wed-ind.chaoxi.tidal', VER='V29';
+const ID='wed-ind.chaoxi.tidal', VER='V30';
 const DEFAULT_SOURCE='https://raw.githubusercontent.com/G-Lcn/MAi-AG/main/A-GP/Wed-DP/Plugins/external/CXZB-MuseAi-ZT';
 const CTX_INTRA='main.intraday', CTX_KLINE='main.kline';
 const BUY='#ef5350';        // 买红（与做T标记先例一致）
@@ -124,7 +144,7 @@ const STYLE_REGISTRY=Object.freeze({
   't_signal':        { code:'分时T',     shapeBuy:'triangleUp', shapeSell:'triangleDown', symBuy:'▲', symSell:'▼', buy:'#ff5a5f', sell:'#2ec4b6', base:10, text:'' },
   't_trade_aggressive': { code:'分时T·激进', shapeBuy:'arrowUp',    shapeSell:'arrowDown',    symBuy:'⬆', symSell:'⬇', buy:'#ff7043', sell:'#00bfa5', base:12, text:'' },
   't_trade_conservative': { code:'分时T·保守', shapeBuy:'diamond',    shapeSell:'diamond',    symBuy:'◆', symSell:'◆', buy:'#ffb300', sell:'#4db6ac', base:9,  text:'' },
-  'kline_signal':    { code:'K线T',      shapeBuy:'square',     shapeSell:'square',     symBuy:'■', symSell:'■', buy:'#ef5350', sell:'#26a69a', base:10, text:'' },
+  'kline_signal':    { code:'K线T',      shapeBuy:'arrowUp',    shapeSell:'arrowDown',  symBuy:'⬆', symSell:'⬇', buy:'#ef5350', sell:'#26a69a', base:10, text:'' },
   'kline_single':    { code:'日K',       shapeBuy:'star',       shapeSell:'star',       symBuy:'★', symSell:'★', buy:'#f06292', sell:'#4dd0e1', base:11, text:'', glyph:'日' },
   'kline_combo':     { code:'K线组合',   shapeBuy:'flag',       shapeSell:'flag',       symBuy:'⚑', symSell:'⚑', buy:'#ff5252', sell:'#009688', base:11, text:'组', glyph:'组' },
   't_breakout':      { code:'分时突破', shapeBuy:'star',       shapeSell:'star',       symBuy:'★', symSell:'★', buy:'#ff8a2b', sell:'#00acc1', base:11, text:'', glyph:'突' },
@@ -303,7 +323,7 @@ function tooltipOf(sig){
   const myNote=noteOf(sig);
   const reason=sig.reason?`｜原因 ${sig.reason}`:'';
   const stratWord=strategyOf(sig); const strat=(stratWord&&!style.code.includes(stratWord==='aggressive'?'激进':'保守'))?`｜${stratWord==='aggressive'?'激进':'保守'}`:'';
-  return `${p.hour}:${p.minute} ${sym}${buy?'买':'卖'} ${sig.price}｜${style.code}·${sig.chart==='intraday'?'分时':(sig.period||'')} ${strength}${strat}${note}${reason}${myNote?`｜备注 ${myNote}`:''}`.slice(0,240);
+  return `${p.hour}:${p.minute} ${sym}${buy?'买':'卖'} ${sig.price}｜${style.code}·${periodLabel(sig)} ${strength}${strat}${note}${reason}${myNote?`｜备注 ${myNote}`:''}`.slice(0,240);
 }
 /* 直接标签（批量二定稿）：分时 T · 价 14.88 +300，+为买、-为卖、数字为数量；
  * 信号里没有数量字段时只写价，不编造数量。时间由横轴位置给出，标签里不写时间。 */
@@ -1217,7 +1237,7 @@ function selfPanelGroups(){
     ]},
     {id:'signals', title:'今日活跃信号', defaultCollapsed:false, rows:[
       {id:'active', kind:'text', label:`共${sum.total}条 · 剩余${fb.remaining||sum.total}条 · 未看${sum.unread}条`, value:''},
-      ...filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time)).map(sig=>{ const buy=sideOf(sig)==='buy'; const q=num(sig.qty??sig.quantity??sig.shares??sig.amount); const qty=isNum(q)?(buy?` +${q}`:` -${q}`):''; return {id:`sig-${sig.id||sig.time}`, kind:'text', label:`${String(sig.time||'').slice(11,16)} ${styleOf(sig).code} ${buy?'▲买':'▼卖'} ${sig.price}${qty}`, value:''}; }),
+      ...filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time)).map(sig=>{ const buy=sideOf(sig)==='buy'; const q=num(sig.qty??sig.quantity??sig.shares??sig.amount); const qty=isNum(q)?(buy?` +${q}`:` -${q}`):''; const per=String(sig.chart||'')==='kline'?'·'+periodLabel(sig):''; return {id:`sig-${sig.id||sig.time}`, kind:'text', label:`${String(sig.time||'').slice(11,16)} ${styleOf(sig).code}${per} ${buy?'▲买':'▼卖'} ${sig.price}${qty}`, value:''}; }),
     ]},
     {id:'advanced', title:'高级设置', defaultCollapsed:true, rows:[
       {id:'source', kind:'text', label:`信号源：${baseUrl()}`, value:''},
@@ -1248,7 +1268,7 @@ function selfPanelHtml(){
     +'<label class="item"><span>分时标记<span class="badge">'+intraCnt+'</span></span><input type="checkbox" data-row="intraday" '+(s.intradayEnabled?'checked':'')+'></label>'
     +'<label class="item"><span>K线标记<span class="badge">'+klineCnt+'</span></span><input type="checkbox" data-row="kline" '+(s.klineEnabled?'checked':'')+'></label>'
     +'<label class="item"><span>直接标签<span class="badge">'+filtCnt+'</span></span><input type="checkbox" data-row="direct" '+(s.directLabelEnabled?'checked':'')+'></label></div>';
-  const sigRows=filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time)).map(sig=>{ const buy=sideOf(sig)==='buy'; const q=num(sig.qty??sig.quantity??sig.shares??sig.amount); const qty=isNum(q)?(buy?' +'+q:' -'+q):''; return '<div class="sigrow"><span class="'+(buy?'sig-buy':'sig-sell')+'">'+escHtml(String(sig.time||'').slice(11,16)+' '+styleOf(sig).code+' '+(buy?'▲买':'▼卖')+' '+sig.price+qty)+'</span><span>'+escHtml(sig.source||'')+'</span></div>'; }).join('')||'<div class="full">当日无信号</div>';
+  const sigRows=filteredSignals().slice().sort((a,b)=>msOf(b.time)-msOf(a.time)).map(sig=>{ const buy=sideOf(sig)==='buy'; const q=num(sig.qty??sig.quantity??sig.shares??sig.amount); const qty=isNum(q)?(buy?' +'+q:' -'+q):''; const per=String(sig.chart||'')==='kline'?'·'+periodLabel(sig):''; return '<div class="sigrow"><span class="'+(buy?'sig-buy':'sig-sell')+'">'+escHtml(String(sig.time||'').slice(11,16)+' '+styleOf(sig).code+per+' '+(buy?'▲买':'▼卖')+' '+sig.price+qty)+'</span><span>'+escHtml(sig.source||'')+'</span></div>'; }).join('')||'<div class="full">当日无信号</div>';
   const lastFetch=state.fetchedAt?shTimeStr(state.fetchedAt).slice(0,5):'--:--';
   const autoMode=state.settings.viewDate?'历史·手动':(isTradingNow()?'自动':'盘外·手动');
   const sigHead='<span class="lastfetch">上次 '+lastFetch+' · '+autoMode+'</span><button class="refresh" data-row="refresh" title="手动刷新信号">↻</button>';
