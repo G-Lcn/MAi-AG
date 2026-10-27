@@ -2,7 +2,7 @@
  "kind": "chaoxi-intraday-signals",
  "version": 1,
  "date": "2026-10-27",
- "generated_at": "2026-10-27T20:36:47+08:00",
+ "generated_at": "2026-10-27T21:11:27+08:00",
  "signals": [
   {
    "id": "2026-10-27-001",
@@ -163,6 +163,22 @@
    "source": "K线T",
    "strength": 65,
    "note": "5分钟底背离：新低但杀不动了，空头没力气了"
+  },
+  {
+   "id": "2026-10-27-011",
+   "date": "2026-10-27",
+   "status": "confirmed",
+   "code": "601360",
+   "name": "三六零",
+   "chart": "intraday",
+   "period": "intraday",
+   "type": "t_signal",
+   "side": "sell",
+   "time": "2026-10-27T09:51:00+08:00",
+   "price": 8.71,
+   "source": "分析·做T",
+   "strength": null,
+   "note": "下穿分时均价，全天未站回，跌破开盘区间确认"
   }
  ]
 }

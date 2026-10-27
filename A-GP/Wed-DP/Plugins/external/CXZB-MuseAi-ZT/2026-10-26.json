@@ -64,8 +64,24 @@
       "source": "分析·均价穿越",
       "strength": null,
       "note": "分析：午后假突破34.79后跌回均价之下"
+    },
+    {
+      "id": "2026-10-26-A05",
+      "date": "2026-10-26",
+      "status": "confirmed",
+      "code": "601360",
+      "name": "三六零",
+      "chart": "kline",
+      "period": "30m",
+      "type": "kline_signal",
+      "side": "sell",
+      "time": "2026-10-26T14:00:00+08:00",
+      "price": 8.66,
+      "source": "分析·做T",
+      "strength": null,
+      "note": "30分钟下穿MA5，KDJ死叉（量未跟上，偏弱）"
     }
   ],
-  "generated_at": "2026-10-26T20:47:00+08:00",
+  "generated_at": "2026-10-27T21:11:27+08:00",
   "note": "仅保留最新分析信号，原6条潮汐信号已移除（备份在本地 push-signals-analysis-20261026-backup-10.json）"
 }
