@@ -1,0 +1,24 @@
+{
+ "kind": "chaoxi-intraday-signals",
+ "version": 1,
+ "date": "2026-10-13",
+ "generated_at": "2026-10-27T22:03:10+08:00",
+ "signals": [
+  {
+   "id": "2026-10-13-001",
+   "date": "2026-10-13",
+   "status": "confirmed",
+   "code": "601360",
+   "name": "三六零",
+   "chart": "kline",
+   "period": "30m",
+   "type": "kline_signal",
+   "side": "买",
+   "time": "2026-10-13T11:30:00+08:00",
+   "price": 8.9,
+   "source": "分析·做T",
+   "strength": null,
+   "note": "上穿MA5，KDJ金叉"
+  }
+ ]
+}
